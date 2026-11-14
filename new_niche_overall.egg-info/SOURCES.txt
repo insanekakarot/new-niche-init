@@ -1,0 +1,14 @@
+README.md
+pyproject.toml
+app/__init__.py
+app/config.py
+app/main.py
+app/api/__init__.py
+app/api/routes/__init__.py
+app/api/routes/health.py
+new_niche_overall.egg-info/PKG-INFO
+new_niche_overall.egg-info/SOURCES.txt
+new_niche_overall.egg-info/dependency_links.txt
+new_niche_overall.egg-info/requires.txt
+new_niche_overall.egg-info/top_level.txt
+tests/test_main.py
