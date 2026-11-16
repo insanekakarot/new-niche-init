@@ -1,0 +1,32 @@
+{# Shared building blocks for inner pages (see index.html for the home page). #}
+{% from "_tool_icons.html" import tool_icon %}
+
+{% macro section_bar(num, title, aside="") -%}
+<div class="flex items-center justify-between gap-4 border-b border-line px-6 py-3.5 sm:px-10">
+  <span class="label text-faint"><span class="text-accent">{{ num }}</span> / {{ title }}</span>
+  {% if aside %}<span class="label hidden text-faint sm:block">{{ aside }}</span>{% endif %}
+</div>
+{%- endmacro %}
+
+{# Two-tone serif heading: `lead` is faded, `title` is full strength. #}
+{% macro page_header(num, crumb, lead, title, description="", icon=None, aside="", live=None) -%}
+{{ section_bar(num, crumb, aside) }}
+<section class="border-b border-line px-6 py-12 sm:px-10 sm:py-14">
+  <div class="flex items-start gap-5">
+    {% if icon %}
+    <div class="mt-2 hidden h-12 w-12 flex-shrink-0 items-center justify-center rounded-lg sm:flex {% if live %}bg-accent text-white{% else %}bg-accent-tint text-accent{% endif %}">
+      {{ tool_icon(icon, "h-6 w-6") }}
+    </div>
+    {% endif %}
+    <div class="min-w-0">
+      <h1 class="font-serif text-[38px] font-medium leading-[1.15] sm:text-[48px]">
+        {% if lead %}<span class="text-ink/70">{{ lead }}</span> {% endif %}{{ title }}
+      </h1>
+      {% if description %}
+      <p class="mt-5 max-w-2xl text-[16px] leading-[1.75] text-muted">{{ description }}</p>
+      {% endif %}
+      {{ caller() if caller }}
+    </div>
+  </div>
+</section>
+{%- endmacro %}

@@ -1,0 +1,31 @@
+import sys
+from pathlib import Path
+
+import pytest
+
+from app.cli.config import clear_settings_cache
+from app.config import settings
+
+HERE = Path(__file__).parent
+FAKE_CLAUDE = HERE / "fake_claude.py"
+FAKE_CODEX = HERE / "fake_codex.py"
+
+
+@pytest.fixture(autouse=True)
+def isolated_storage(tmp_path, monkeypatch):
+    """Never touch the real app/admin/inputs, app/output, the Z: drive or the real CLIs."""
+    monkeypatch.setattr(settings, "admin_dir", tmp_path / "admin")
+    monkeypatch.setattr(settings, "scripts_config_dir", tmp_path / "z" / "_scripts")
+    monkeypatch.setenv("CLI_OUTPUT_DIR", str(tmp_path / "output"))
+    monkeypatch.setenv("CLI_DEFAULT_PROVIDER", "claude")
+    monkeypatch.setenv("CLAUDE_CLI_BIN", f"{sys.executable} {FAKE_CLAUDE}")
+    monkeypatch.setenv("CLAUDE_CLI_MODEL", "claude-sonnet-5")
+    monkeypatch.setenv("CLAUDE_CLI_EFFORT", "medium")
+    monkeypatch.setenv("CODEX_CLI_BIN", f"{sys.executable} {FAKE_CODEX}")
+    monkeypatch.setenv("CODEX_CLI_MODEL", "gpt-5.6-sol")
+    monkeypatch.setenv("CODEX_CLI_REASONING_EFFORT", "medium")
+    monkeypatch.delenv("FAKE_CLAUDE_MODE", raising=False)
+    monkeypatch.delenv("FAKE_CODEX_MODE", raising=False)
+    clear_settings_cache()
+    yield
+    clear_settings_cache()

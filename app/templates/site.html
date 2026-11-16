@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{% block title %}New Niche Overall{% endblock %}</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23c8322b'/%3E%3Ctext x='16' y='23' font-size='19' text-anchor='middle' fill='white' font-family='Georgia,serif'%3EN%3C/text%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500&family=Inter:wght@400;500;600&family=Newsreader:opsz,wght@6..72,400;6..72,500&display=swap" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    // Cartesia's palette with red in place of their green.
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            paper: '#ffffff',      // page background
+            card: '#fafaf8',       // hover / raised surface
+            ink: '#1e1c1a',        // text
+            muted: '#525150',      // secondary text
+            faint: '#8b8984',      // labels
+            line: '#e4e3db',       // hairlines and borders
+            accent: { DEFAULT: '#c8322b', dark: '#a3241e', tint: '#fdf3f1', soft: '#f6d9d4' },
+          },
+          fontFamily: {
+            serif: ['Newsreader', 'Georgia', 'serif'],
+            sans: ['Inter', 'system-ui', 'sans-serif'],
+            mono: ['"Geist Mono"', 'ui-monospace', 'SFMono-Regular', 'Menlo', 'monospace'],
+          },
+        },
+      },
+    };
+  </script>
+  <style>
+    body { letter-spacing: 0.012em; }
+    .label { font-family: "Geist Mono", ui-monospace, monospace; font-size: 11px; letter-spacing: .16em; text-transform: uppercase; }
+    .font-serif { letter-spacing: 0.01em; }
+    .btn { display: inline-flex; align-items: center; gap: .5rem; height: 2.25rem; padding: 0 1rem; border-radius: 8px;
+           font-size: 14px; font-weight: 500; letter-spacing: 0.015em; border: 1px solid transparent; transition: background-color .15s, border-color .15s, color .15s; }
+    .btn-primary { background: #c8322b; color: #fefefe; }
+    .btn-primary:hover { background: #a3241e; }
+    .btn-secondary { background: #fff; color: #1e1c1a; border-color: #e4e3db; }
+    .btn-secondary:hover { background: #fafaf8; border-color: #cfccc3; }
+    .btn-lg { height: 2.75rem; padding: 0 1.25rem; font-size: 15px; }
+    /* Smooth dropdowns: <div class="dd" data-dd> <button data-dd-toggle> … <div class="dd-panel"> */
+    .dd-panel { opacity: 0; transform: translateY(-4px); pointer-events: none; transition: opacity .16s ease, transform .16s ease; }
+    .dd.open .dd-panel { opacity: 1; transform: none; pointer-events: auto; }
+    .dd-chevron { transition: transform .2s ease; }
+    .dd.open .dd-chevron { transform: rotate(180deg); }
+    .arrow { transition: transform .2s ease; display: inline-block; }
+    .group:hover .arrow { transform: translateX(3px); }
+    /* Smooth accordions: <div class="acc"> <button data-acc-toggle> … <div class="acc-body"><div> … */
+    .acc-body { display: grid; grid-template-rows: 0fr; transition: grid-template-rows .25s ease; }
+    .acc-body > div { overflow: hidden; }
+    .acc.open .acc-body { grid-template-rows: 1fr; }
+    .acc.open > button .dd-chevron { transform: rotate(180deg); }
+    .fade-in { animation: fadeIn .25s ease both; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+  </style>
+  {% block head %}{% endblock %}
+</head>
+<body class="flex min-h-screen flex-col bg-paper font-sans text-ink antialiased selection:bg-accent selection:text-white">
+  <!-- Top bar -->
+  <header class="sticky top-0 z-30 border-b border-line bg-paper/95 backdrop-blur">
+    <div class="mx-auto flex h-16 max-w-6xl items-center gap-6 border-x border-line px-6 sm:px-10">
+      <a href="/" class="flex items-center gap-2.5" aria-label="New Niche Overall home">
+        <span class="flex h-7 w-7 items-center justify-center rounded-md bg-accent font-serif text-[18px] leading-none text-white">N</span>
+        <span class="font-serif text-[21px]">New Niche</span>
+      </a>
+      <nav class="hidden items-center gap-3 text-[14px] font-medium sm:flex">
+        <div class="dd relative" data-dd>
+          <button type="button" data-dd-toggle aria-expanded="false" class="flex items-center gap-1.5 rounded px-2.5 py-1.5 transition hover:bg-card">
+            Tools
+            <svg class="dd-chevron h-3.5 w-3.5 text-faint" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.06l3.71-3.83a.75.75 0 111.08 1.04l-4.25 4.39a.75.75 0 01-1.08 0L5.21 8.27a.75.75 0 01.02-1.06z" clip-rule="evenodd"/></svg>
+          </button>
+          <div class="dd-panel absolute left-0 top-full z-40 mt-2 w-72 overflow-hidden rounded-lg border border-line bg-paper p-1 shadow-[0_8px_24px_rgba(30,28,26,.08)]">
+            {% for t in nav_tools %}
+            <a href="{{ t.path }}" class="flex items-center justify-between gap-3 rounded-md px-3 py-2.5 transition hover:bg-card">
+              <span class="text-[14px]">{{ t.short_name }}</span>
+              {% if t.status == 'live' %}
+              <span class="rounded bg-accent-tint px-1.5 py-0.5 text-[11px] font-medium text-accent">Live</span>
+              {% else %}
+              <span class="text-[11px] text-faint">Planned</span>
+              {% endif %}
+            </a>
+            {% endfor %}
+          </div>
+        </div>
+        <a href="/admin/scripts/dashboard" class="rounded px-2.5 py-1.5 transition hover:bg-card">Admin</a>
+      </nav>
+      <div class="ml-auto flex items-center gap-3">
+        <a href="/admin/scripts/dashboard" class="btn btn-secondary hidden sm:inline-flex">Admin</a>
+        <a href="/scripting" class="btn btn-primary">Open Scripting</a>
+      </div>
+    </div>
+  </header>
+
+  {% block banner %}{% endblock %}
+
+  <main class="mx-auto w-full max-w-6xl flex-1 border-x border-line">
+    {% block content %}{% endblock %}
+  </main>
+
+  <footer class="border-t border-line">
+    <div class="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 border-x border-line px-6 py-6 text-[13px] text-faint sm:px-10">
+      <span>New Niche Overall · Automation suite</span>
+      <a href="/health" class="flex items-center gap-2 transition hover:text-ink"><span class="h-1.5 w-1.5 rounded-full bg-[#309d4b]"></span>Server online</a>
+    </div>
+  </footer>
+
+  <script>
+    document.addEventListener('click', (e) => {
+      const toggle = e.target.closest('[data-dd-toggle]');
+      document.querySelectorAll('[data-dd].open').forEach((dd) => { if (!toggle || !dd.contains(toggle)) dd.classList.remove('open'); });
+      if (toggle) {
+        const dd = toggle.closest('[data-dd]');
+        dd.classList.toggle('open');
+        toggle.setAttribute('aria-expanded', dd.classList.contains('open'));
+      }
+    });
+    document.addEventListener('click', (e) => {
+      const t = e.target.closest('[data-acc-toggle]');
+      if (t) t.closest('.acc').classList.toggle('open');
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') document.querySelectorAll('[data-dd].open').forEach((dd) => dd.classList.remove('open'));
+    });
+  </script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

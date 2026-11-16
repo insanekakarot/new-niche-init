@@ -1,0 +1,152 @@
+{% extends "site.html" %}
+{% from "_page.html" import page_header %}
+{% from "_tool_icons.html" import tool_icon %}
+{% block title %}Upload TSV — Admin{% endblock %}
+{% block content %}
+  {{ page_header("02", "Admin / Upload TSV", "Upload the", "prompts TSV.",
+                 "Drop the Scripting Prompts Config TSV here. You'll see a preview first; nothing is saved until you click Save & apply.",
+                 icon="uploading", live=true, aside="API key protected") }}
+  {% include "admin/_tabs.html" %}
+  <div class="px-6 py-10 sm:px-10">
+  <div class="grid gap-4">
+    <!-- Drop zone -->
+    <label id="drop" for="file"
+           class="group flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-line bg-paper px-6 py-12 text-center transition duration-200 hover:border-[#cfccc3]">
+      <div id="drop-icon" class="flex h-14 w-14 items-center justify-center rounded-lg bg-accent-tint text-accent transition duration-200">{{ tool_icon("uploading", "h-7 w-7") }}</div>
+      <div class="mt-5 font-serif text-[22px] font-medium text-ink">Drag &amp; drop your <code class="rounded bg-accent-tint px-1.5 py-0.5 text-base text-accent">.tsv</code> here</div>
+      <div class="mt-1 text-sm text-muted">or <span class="font-semibold text-accent underline-offset-2 group-hover:underline">choose a file</span> · up to 10 MB</div>
+      <div id="picked" class="mt-4 hidden rounded-full border border-line bg-accent-tint px-4 py-1.5 text-xs font-medium text-accent-dark"></div>
+      <input id="file" type="file" accept=".tsv,.txt,text/tab-separated-values" class="sr-only">
+    </label>
+
+    <!-- Expected format -->
+    <div class="acc rounded-lg border border-line bg-paper">
+      <button type="button" data-acc-toggle class="flex w-full items-center justify-between gap-2 px-6 py-4 text-left text-sm font-semibold text-ink">
+        Expected format
+        <svg class="dd-chevron h-4 w-4 text-accent" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.06l3.71-3.83a.75.75 0 111.08 1.04l-4.25 4.39a.75.75 0 01-1.08 0L5.21 8.27a.75.75 0 01.02-1.06z" clip-rule="evenodd"/></svg>
+      </button>
+      <div class="acc-body"><div>
+        <div class="space-y-3 px-6 pb-5 text-sm leading-6 text-muted">
+          <p>Tab-separated, one row per brand, with these 9 columns:</p>
+          <div class="flex flex-wrap gap-2">{% for c in columns %}<code class="rounded bg-accent-tint px-1.5 py-0.5 text-xs text-ink ring-1 ring-line">{{ c }}</code>{% endfor %}</div>
+          <p><b>Steps:</b> <code class="text-xs">Outline + Script + Audits</code> or <code class="text-xs">if (!competitor_script) { Research + Outline } else { Paraphrasing }</code></p>
+          <p><b>Inputs:</b> <code class="text-xs">outline = video_title + outline_prompt script = video_title + outline + script_prompt</code></p>
+          <p>Saved as <code class="text-xs">{{ s.tsv.path }}</code>,<br>processed into <code class="text-xs">{{ s.config_file.path }}</code>.</p>
+        </div>
+      </div></div>
+    </div>
+
+    <!-- Result -->
+    <div id="result" class="hidden rounded-lg border border-line bg-paper p-6"></div>
+  </div>
+  </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  const drop = document.getElementById('drop');
+  const input = document.getElementById('file');
+  const picked = document.getElementById('picked');
+  const result = document.getElementById('result');
+  let current = null;
+
+  const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const kb = (n) => (n / 1024).toFixed(1) + ' KB';
+
+  function show(html, tone = 'normal') {
+    result.className = 'fade-in rounded-lg border p-6 ' +
+      (tone === 'error' ? 'border-line bg-accent-tint' : tone === 'ok' ? 'border-emerald-200 bg-emerald-50' : 'border-line bg-paper');
+    result.innerHTML = html;
+  }
+
+  ['dragenter', 'dragover'].forEach((ev) => drop.addEventListener(ev, (e) => {
+    e.preventDefault();
+    drop.classList.add('border-accent', 'bg-accent-tint', 'scale-[1.01]');
+    document.getElementById('drop-icon').classList.add('scale-110');
+  }));
+  ['dragleave', 'drop'].forEach((ev) => drop.addEventListener(ev, (e) => {
+    e.preventDefault();
+    drop.classList.remove('border-accent', 'bg-accent-tint', 'scale-[1.01]');
+    document.getElementById('drop-icon').classList.remove('scale-110');
+  }));
+  drop.addEventListener('drop', (e) => { if (e.dataTransfer.files[0]) pick(e.dataTransfer.files[0]); });
+  input.addEventListener('change', () => { if (input.files[0]) pick(input.files[0]); input.value = ''; });
+
+  async function send(file, dryRun) {
+    const body = new FormData();
+    body.append('file', file);
+    const res = await fetch('/admin/scripts/prompts/edit' + (dryRun ? '?dry_run=true' : ''), {
+      method: 'POST', body, credentials: 'same-origin',
+    });
+    let data = null;
+    try { data = await res.json(); } catch { /* non-JSON error */ }
+    if (res.status === 401) { location.href = '/admin/login?next=' + encodeURIComponent(location.pathname); return null; }
+    if (!res.ok) throw new Error((data && data.detail) || `Upload failed (${res.status})`);
+    return data;
+  }
+
+  function summary(data) {
+    const brands = data.config.map((entry) => {
+      const [key, b] = Object.entries(entry)[0];
+      const steps = b.steps.map((br) =>
+        (br.condition ? `<span class="text-faint">${esc(br.condition.startsWith('!') ? 'if no ' + br.condition.slice(1) : 'if ' + br.condition)}:</span> ` : '') +
+        br.run.map(esc).join(' → ')).join('<br>');
+      return `<div class="rounded-lg border border-line bg-paper p-4">
+          <div class="flex items-center justify-between gap-2">
+            <span class="font-semibold text-ink">${esc(b.brand_name)}</span>
+            <code class="rounded bg-accent-tint px-1.5 py-0.5 text-xs text-accent">${esc(key)}</code>
+          </div>
+          <div class="mt-2 text-xs leading-5 text-muted">${steps}</div>
+        </div>`;
+    }).join('');
+    const warns = data.warnings.length
+      ? `<div class="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+           <div class="font-semibold">${data.warnings.length} warning${data.warnings.length > 1 ? 's' : ''}</div>
+           <ul class="mt-1 list-disc space-y-1 pl-5">${data.warnings.map((w) => `<li>${esc(w)}</li>`).join('')}</ul>
+         </div>` : '';
+    return `<div class="mt-4 grid gap-3 sm:grid-cols-2">${brands}</div>${warns}`;
+  }
+
+  async function pick(file) {
+    current = file;
+    picked.textContent = `${file.name} · ${kb(file.size)}`;
+    picked.classList.remove('hidden');
+    show('<div class="text-sm text-muted">Checking the file…</div>');
+    try {
+      const data = await send(file, true);
+      if (!data) return;
+      show(`<div class="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 class="font-serif text-[24px] font-medium leading-tight text-ink">Preview: ${data.brands.length} brand${data.brands.length > 1 ? 's' : ''} found</h2>
+            <p class="mt-1 text-sm text-muted">Nothing is saved yet. Saving replaces the current config.</p>
+          </div>
+          <button id="apply" type="button" class="inline-flex items-center gap-2 rounded-lg bg-accent px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-accent-dark  active:scale-[.98] disabled:cursor-wait disabled:bg-accent/40">
+            Save &amp; apply →
+          </button>
+        </div>${summary(data)}`);
+      document.getElementById('apply').addEventListener('click', apply);
+    } catch (err) {
+      show(`<div class="font-semibold text-accent-dark">This file can't be used</div><p class="mt-1 text-sm text-accent-dark">${esc(err.message)}</p>`, 'error');
+    }
+  }
+
+  async function apply(e) {
+    const btn = e.currentTarget;
+    btn.disabled = true; btn.textContent = 'Saving…';
+    try {
+      const data = await send(current, false);
+      if (!data) return;
+      show(`<div class="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 class="font-serif text-[24px] font-medium leading-tight text-emerald-800">Config updated: ${data.brands.length} brand${data.brands.length > 1 ? 's' : ''}</h2>
+            <p class="mt-1 break-all text-xs leading-5 text-emerald-800">TSV → <code>${esc(data.tsv_path)}</code><br>JSON → <code>${esc(data.config_path)}</code></p>
+          </div>
+          <a href="/admin/scripts/dashboard" class="inline-flex items-center gap-2 rounded-lg bg-accent px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-accent-dark">Open dashboard →</a>
+        </div>${summary(data)}`, 'ok');
+    } catch (err) {
+      btn.disabled = false; btn.textContent = 'Save & apply →';
+      show(`<div class="font-semibold text-accent-dark">Save failed</div><p class="mt-1 text-sm text-accent-dark">${esc(err.message)}</p>`, 'error');
+    }
+  }
+</script>
+{% endblock %}

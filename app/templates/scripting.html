@@ -1,0 +1,611 @@
+{% extends "site.html" %}
+{% from "_page.html" import page_header %}
+{% block title %}{{ tool.name }} — New Niche Overall{% endblock %}
+{% macro chevron() %}<svg class="dd-chevron h-4 w-4 flex-shrink-0 text-accent" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.06l3.71-3.83a.75.75 0 111.08 1.04l-4.25 4.39a.75.75 0 01-1.08 0L5.21 8.27a.75.75 0 01.02-1.06z" clip-rule="evenodd"/></svg>{% endmacro %}
+{% macro picon(key, cls="h-4 w-4") -%}
+{%- if key == "claude" -%}
+<svg class="{{ cls }} flex-shrink-0" viewBox="0 0 24 24" fill="#D97757" role="img" aria-label="Claude"><title>Claude</title><path d="m4.7144 15.9555 4.7174-2.6471.079-.2307-.079-.1275h-.2307l-.7893-.0486-2.6956-.0729-2.3375-.0971-2.2646-.1214-.5707-.1215-.5343-.7042.0546-.3522.4797-.3218.686.0608 1.5179.1032 2.2767.1578 1.6514.0972 2.4468.255h.3886l.0546-.1579-.1336-.0971-.1032-.0972L6.973 9.8356l-2.55-1.6879-1.3356-.9714-.7225-.4918-.3643-.4614-.1578-1.0078.6557-.7225.8803.0607.2246.0607.8925.686 1.9064 1.4754 2.4893 1.8336.3643.3035.1457-.1032.0182-.0728-.164-.2733-1.3539-2.4467-1.445-2.4893-.6435-1.032-.17-.6194c-.0607-.255-.1032-.4674-.1032-.7285L6.287.1335 6.6997 0l.9957.1336.419.3642.6192 1.4147 1.0018 2.2282 1.5543 3.0296.4553.8985.2429.8318.091.255h.1579v-.1457l.1275-1.706.2368-2.0947.2307-2.6957.0789-.7589.3764-.9107.7468-.4918.5828.2793.4797.686-.0668.4433-.2853 1.8517-.5586 2.9021-.3643 1.9429h.2125l.2429-.2429.9835-1.3053 1.6514-2.0643.7286-.8196.85-.9046.5464-.4311h1.0321l.759 1.1293-.34 1.1657-1.0625 1.3478-.8804 1.1414-1.2628 1.7-.7893 1.36.0729.1093.1882-.0183 2.8535-.607 1.5421-.2794 1.8396-.3157.8318.3886.091.3946-.3278.8075-1.967.4857-2.3072.4614-3.4364.8136-.0425.0304.0486.0607 1.5482.1457.6618.0364h1.621l3.0175.2247.7892.522.4736.6376-.079.4857-1.2142.6193-1.6393-.3886-3.825-.9107-1.3113-.3279h-.1822v.1093l1.0929 1.0686 2.0035 1.8092 2.5075 2.3314.1275.5768-.3218.4554-.34-.0486-2.2039-1.6575-.85-.7468-1.9246-1.621h-.1275v.17l.4432.6496 2.3436 3.5214.1214 1.0807-.17.3521-.6071.2125-.6679-.1214-1.3721-1.9246L14.38 17.959l-1.1414-1.9428-.1397.079-.674 7.2552-.3156.3703-.7286.2793-.6071-.4614-.3218-.7468.3218-1.4753.3886-1.9246.3157-1.53.2853-1.9004.17-.6314-.0121-.0425-.1397.0182-1.4328 1.9672-2.1796 2.9446-1.7243 1.8456-.4128.164-.7164-.3704.0667-.6618.4008-.5889 2.386-3.0357 1.4389-1.882.929-1.0868-.0062-.1579h-.0546l-6.3385 4.1164-1.1293.1457-.4857-.4554.0608-.7467.2307-.2429 1.9064-1.3114Z"/></svg>
+{%- elif key == "codex" -%}
+<svg class="{{ cls }} flex-shrink-0 text-ink" viewBox="0 0 24 24" fill="currentColor" role="img" aria-label="Codex"><title>Codex</title><path d="M22.2819 9.8211a5.9847 5.9847 0 0 0-.5157-4.9108 6.0462 6.0462 0 0 0-6.5098-2.9A6.0651 6.0651 0 0 0 4.9807 4.1818a5.9847 5.9847 0 0 0-3.9977 2.9 6.0462 6.0462 0 0 0 .7427 7.0966 5.98 5.98 0 0 0 .511 4.9107 6.051 6.051 0 0 0 6.5146 2.9001A5.9847 5.9847 0 0 0 13.2599 24a6.0557 6.0557 0 0 0 5.7718-4.2058 5.9894 5.9894 0 0 0 3.9977-2.9001 6.0557 6.0557 0 0 0-.7475-7.0729zm-9.022 12.6081a4.4755 4.4755 0 0 1-2.8764-1.0408l.1419-.0804 4.7783-2.7582a.7948.7948 0 0 0 .3927-.6813v-6.7369l2.02 1.1686a.071.071 0 0 1 .038.052v5.5826a4.504 4.504 0 0 1-4.4945 4.4944zm-9.6607-4.1254a4.4708 4.4708 0 0 1-.5346-3.0137l.142.0852 4.783 2.7582a.7712.7712 0 0 0 .7806 0l5.8428-3.3685v2.3324a.0804.0804 0 0 1-.0332.0615L9.74 19.9502a4.4992 4.4992 0 0 1-6.1408-1.6464zM2.3408 7.8956a4.485 4.485 0 0 1 2.3655-1.9728V11.6a.7664.7664 0 0 0 .3879.6765l5.8144 3.3543-2.0201 1.1685a.0757.0757 0 0 1-.071 0l-4.8303-2.7865A4.504 4.504 0 0 1 2.3408 7.872zm16.5963 3.8558L13.1038 8.364 15.1192 7.2a.0757.0757 0 0 1 .071 0l4.8303 2.7913a4.4944 4.4944 0 0 1-.6765 8.1042v-5.6772a.79.79 0 0 0-.407-.667zm2.0107-3.0231l-.142-.0852-4.7735-2.7818a.7759.7759 0 0 0-.7854 0L9.409 9.2297V6.8974a.0662.0662 0 0 1 .0284-.0615l4.8303-2.7866a4.4992 4.4992 0 0 1 6.6802 4.66zM8.3065 12.863l-2.02-1.1638a.0804.0804 0 0 1-.038-.0567V6.0742a4.4992 4.4992 0 0 1 7.3757-3.4537l-.142.0805L8.704 5.459a.7948.7948 0 0 0-.3927.6813zm1.0976-2.3654l2.602-1.4998 2.6069 1.4998v2.9994l-2.5974 1.4997-2.6067-1.4997Z"/></svg>
+{%- else -%}{{ key }}{%- endif -%}
+{%- endmacro %}
+{% macro dropdown(id, placeholder, disabled=false) %}
+<div class="dd relative" data-dd>
+  <button type="button" data-dd-toggle aria-expanded="false" id="{{ id }}-btn" {% if disabled %}disabled{% endif %}
+          class="flex w-full items-center justify-between gap-2 rounded-lg border border-line bg-paper px-4 py-3 text-left text-sm font-medium text-ink transition hover:border-[#cfccc3] focus:outline-none focus:ring-2 focus:ring-accent/15 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:border-line">
+    <span id="{{ id }}-label" class="truncate text-faint">{{ placeholder }}</span>{{ chevron() }}
+  </button>
+  <div id="{{ id }}-panel" class="dd-panel absolute left-0 right-0 z-20 mt-2 max-h-80 overflow-y-auto rounded-lg border border-line bg-paper p-1.5 shadow-[0_8px_24px_rgba(30,28,26,.08)]">{{ caller() if caller }}</div>
+</div>
+{% endmacro %}
+{% block content %}
+  {{ page_header("01", "Tools / Scripting", "Scripting", "tool.", tool.description, icon="scripting", live=true, aside="Claude · Codex") }}
+  <div class="px-6 py-10 sm:px-10">
+
+  {% if config_error %}
+  <div class="rounded-lg border border-line bg-accent-tint p-6 text-sm text-accent-dark">
+    <div class="font-semibold">The Scripting Tool can't load its config</div>
+    <p class="mt-1">{{ config_error }}</p>
+    <a href="/admin/scripts/dashboard" class="mt-3 inline-flex items-center gap-1 font-semibold text-accent transition-all hover:gap-2">Open admin →</a>
+  </div>
+  {% elif not brands %}
+  <a href="/admin/scripts/prompts/edit" class="group block rounded-lg border border-dashed border-line bg-paper p-10 text-center transition hover:border-[#cfccc3]">
+    <div class="label text-faint">No config</div>
+    <div class="mt-2 font-serif text-[24px] font-medium leading-tight text-ink">No brands configured yet</div>
+    <p class="mt-1 text-sm text-muted">An admin needs to upload the Scripting Prompts Config TSV first.</p>
+    <span class="mt-3 inline-flex items-center gap-1 text-sm font-semibold text-accent transition-all group-hover:gap-2">Upload TSV in admin →</span>
+  </a>
+  {% else %}
+  <div class="grid gap-4">
+    <!-- Brand / Language / Step -->
+    <div class="rounded-lg border border-line bg-paper p-6">
+      <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div>
+          <label class="label mb-2 block text-faint">Brand</label>
+          {% call dropdown("brand", "Choose a brand…") %}
+            {% for b in brands %}
+            <button type="button" data-brand="{{ b.key }}"
+                    class="brand-opt flex w-full items-center justify-between gap-2 rounded-lg px-3 py-2 text-left text-sm text-ink transition hover:bg-card">
+              <span class="min-w-0">
+                <span class="block truncate">{{ b.name }}</span>
+                {% if b.catalog %}<span class="block truncate text-xs text-faint">{{ b.catalog.name }}</span>{% endif %}
+              </span>
+              <span class="flex-shrink-0 text-xs text-faint">{{ b.branches[0].steps | length }} step{{ 's' if b.branches[0].steps | length != 1 }}{% if b.branches | length > 1 %} · if/else{% endif %}</span>
+            </button>
+            {% endfor %}
+          {% endcall %}
+        </div>
+        <div>
+          <label class="label mb-2 block text-faint">Language</label>
+          {{ dropdown("lang", "Pick a brand first", disabled=true) }}
+        </div>
+        <div>
+          <label class="label mb-2 block text-faint">Step</label>
+          {{ dropdown("step", "Pick a brand first", disabled=true) }}
+        </div>
+        <div>
+          <label class="label mb-2 block text-faint">Generate with</label>
+          {% call dropdown("provider", "Choose…") %}
+            {% for p in providers.providers %}
+            <button type="button" data-provider="{{ p.key }}" title="{{ p.label }}" aria-label="{{ p.label }}: {{ p.model }}, {{ p.effort }}"
+                    class="provider-opt flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm text-ink transition hover:bg-card">
+              {{ picon(p.key, "h-5 w-5") }}
+              <span class="min-w-0">
+                <span class="block truncate">{{ p.model }}</span>
+                <span class="block text-xs text-faint">Effort set per step</span>
+              </span>
+            </button>
+            {% endfor %}
+          {% endcall %}
+          {% for p in providers.providers %}<template data-icon="{{ p.key }}">{{ picon(p.key) }}</template>{% endfor %}
+        </div>
+      </div>
+    </div>
+
+    <!-- Brand targets + rules -->
+    <div id="details" class="hidden rounded-lg border border-line bg-paper p-6">
+      <div class="flex items-start gap-4">
+        <div class="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-lg bg-accent-tint text-2xl ring-1 ring-line">📝</div>
+        <div class="min-w-0 flex-1">
+          <h2 id="d-name" class="font-serif text-[24px] font-medium leading-tight text-ink"></h2>
+          <p id="d-sub" class="mt-1 text-sm leading-6 text-muted"></p>
+          <dl id="d-targets" class="mt-4 grid gap-3 sm:grid-cols-3">
+            <div class="rounded-lg bg-accent-tint p-4 ring-1 ring-line">
+              <dt class="label text-accent">Video length</dt>
+              <dd id="d-length" class="mt-1 text-sm font-semibold text-ink"></dd>
+            </div>
+            <div class="rounded-lg bg-accent-tint p-4 ring-1 ring-line">
+              <dt class="label text-accent">Word count</dt>
+              <dd id="d-words" class="mt-1 text-sm font-semibold text-ink"></dd>
+            </div>
+            <div class="rounded-lg bg-accent-tint p-4 ring-1 ring-line">
+              <dt class="label text-accent">Production</dt>
+              <dd id="d-production" class="mt-1 text-sm font-semibold text-ink"></dd>
+            </div>
+          </dl>
+          <div id="d-rules" class="acc mt-4 hidden overflow-hidden rounded-lg border border-line">
+            <button type="button" data-acc-toggle class="flex w-full items-center justify-between gap-3 px-4 py-3 text-left text-sm font-semibold text-ink transition hover:bg-card">
+              Brand rules {{ chevron() }}
+            </button>
+            <div class="acc-body"><div>
+              <pre id="d-rules-text" class="whitespace-pre-wrap break-words border-t border-line bg-card px-4 py-3 font-sans text-xs leading-6 text-ink"></pre>
+            </div></div>
+          </div>
+          <a id="d-drive" href="#" target="_blank" rel="noopener"
+             class="mt-4 hidden items-center gap-1 text-sm font-semibold text-accent transition-all hover:gap-2">
+            Open brand folder <code class="rounded bg-accent-tint px-1.5 py-0.5 text-xs">Google Drive</code> →
+          </a>
+        </div>
+      </div>
+    </div>
+
+    <!-- Flow: every step of the brand, clickable -->
+    <div id="flow-card" class="hidden rounded-lg border border-line bg-paper p-6">
+      <h2 class="font-serif text-[24px] font-medium leading-tight text-ink">Flow</h2>
+      <p class="mt-1 text-sm text-muted">Pick a step here or in the Step dropdown to see its inputs.</p>
+      <div id="flow" class="mt-4 grid gap-3"></div>
+    </div>
+
+    <!-- The selected step -->
+    <div id="step-card" class="hidden rounded-lg border border-line bg-paper p-6">
+      <div class="flex flex-wrap items-start justify-between gap-3">
+        <div class="flex items-center gap-3">
+          <span id="s-num" class="flex h-9 w-9 items-center justify-center rounded-full bg-accent text-sm font-semibold text-white"></span>
+          <div>
+            <h2 id="s-title" class="font-serif text-[26px] font-medium leading-tight text-ink"></h2>
+            <p id="s-branch" class="text-xs text-muted"></p>
+          </div>
+        </div>
+        <div class="flex flex-wrap items-center gap-2">
+          <span id="s-effort" class="rounded bg-accent-tint px-2 py-0.5 text-[12px] font-medium text-accent" title="Set per step in .env (CLI_STEP_EFFORTS)"></span>
+          <div id="s-prompts" class="flex flex-wrap gap-2"></div>
+        </div>
+      </div>
+
+      <div id="s-fields" class="mt-5 grid gap-4"></div>
+
+      <div class="mt-6 flex flex-wrap items-center gap-3 border-t border-line pt-5">
+        <button id="run" type="button" disabled
+                class="inline-flex items-center gap-2 rounded-lg bg-accent px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-accent-dark  active:scale-[.98] disabled:cursor-not-allowed disabled:bg-accent/40 disabled:shadow-none">
+          Run step →
+        </button>
+        <button id="next" type="button"
+                class="hidden items-center gap-1 rounded-lg border border-line bg-paper px-4 py-2.5 text-sm font-semibold text-ink transition hover:border-[#cfccc3]">
+          Next step →
+        </button>
+        <span id="status" class="text-sm text-muted"></span>
+      </div>
+
+      <!-- Claude's response for this step -->
+      <div id="result" class="mt-5 hidden"></div>
+    </div>
+  </div>
+  {% endif %}
+  </div>
+{% endblock %}
+
+{% block scripts %}
+{% if brands %}
+<script>
+  const BRANDS = {{ brands | tojson }};
+  const byKey = Object.fromEntries(BRANDS.map((b) => [b.key, b]));
+  const $ = (id) => document.getElementById(id);
+  const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const state = { brand: null, lang: null, bi: 0, si: 0, values: {}, modes: {}, files: {}, results: {}, running: null };
+  const resultKey = () => `${state.brand.key}:${state.bi}:${state.si}`;
+
+  // ---------- Generate with: Claude or Codex (models come from .env)
+  const PROVIDERS = {{ providers | tojson }};
+  const providerByKey = Object.fromEntries(PROVIDERS.providers.map((p) => [p.key, p]));
+  // The provider's logo (from the <template data-icon> tags), or its name as a fallback.
+  const picon = (key) => {
+    const t = document.querySelector(`template[data-icon="${CSS.escape(key || '')}"]`);
+    return t ? t.innerHTML.trim() : esc((providerByKey[key] || {}).label || key || '');
+  };
+  function chooseProvider(key) {
+    if (!providerByKey[key]) key = PROVIDERS.default;
+    const p = providerByKey[key];
+    state.provider = key;
+    const label = $('provider-label');
+    label.innerHTML = `<span class="inline-flex min-w-0 items-center gap-2" title="${esc(p.label)}">${picon(key)}<span class="truncate">${esc(p.model)}</span></span>`;
+    label.classList.remove('text-faint');
+    document.querySelectorAll('.provider-opt').forEach((o) => o.classList.toggle('bg-accent-tint', o.dataset.provider === key));
+    try { localStorage.setItem('scripting.provider', key); } catch { /* storage unavailable */ }
+    if (state.brand) refresh();
+  }
+  let savedProvider = null;
+  try { savedProvider = localStorage.getItem('scripting.provider'); } catch { /* storage unavailable */ }
+  chooseProvider(savedProvider || PROVIDERS.default);
+  const MAX_TXT_MB = 5;
+  const inputCls = 'w-full rounded-lg border border-line bg-paper px-4 py-3 text-sm text-ink placeholder:text-faint transition focus:border-accent/50 focus:outline-none focus:ring-2 focus:ring-accent/15';
+  const optCls = 'flex w-full items-center justify-between gap-2 rounded-lg px-3 py-2 text-left text-sm text-ink transition hover:bg-card';
+
+  const closeAll = () => document.querySelectorAll('[data-dd].open').forEach((d) => d.classList.remove('open'));
+  const setLabel = (id, text, placeholder = false) => { const el = $(id + '-label'); el.textContent = text; el.classList.toggle('text-faint', placeholder); };
+  const filled = (name) => (state.values[name] || '').trim() !== '';
+  const reveal = (id) => { const el = $(id); el.classList.remove('hidden', 'fade-in'); void el.offsetWidth; el.classList.add('fade-in'); };
+  const words = (s) => (s.trim().match(/\S+/g) || []).length;
+
+  function branchTitle(br) {
+    if (!br.condition) return '';
+    const v = br.condition.replace(/^!/, '').replace(/_/g, ' ');
+    return br.condition.startsWith('!') ? `If there is no ${v}` : `If there is a ${v}`;
+  }
+  const currentStep = () => state.brand.branches[state.bi].steps[state.si];
+
+  // ---------- brand
+  function chooseBrand(key) {
+    const b = byKey[key];
+    state.brand = b;
+    setLabel('brand', b.name);
+    document.querySelectorAll('.brand-opt').forEach((o) => o.classList.toggle('bg-accent-tint', o.dataset.brand === key));
+
+    // Language
+    const c = b.catalog;
+    const langs = c ? c.languages : ['English'];
+    $('lang-panel').innerHTML = langs.map((l) => `<button type="button" data-lang="${esc(l)}" class="lang-opt ${optCls}">${esc(l)}</button>`).join('');
+    $('lang-btn').disabled = false;
+    if (!langs.includes(state.lang)) { state.lang = null; setLabel('lang', 'Choose a language…', true); }
+    if (langs.length === 1) state.lang = langs[0];
+    if (state.lang) chooseLang(state.lang, false);
+
+    // Step dropdown, grouped by branch when the brand has an if/else
+    $('step-panel').innerHTML = b.branches.map((br, bi) =>
+      (br.condition ? `<div class="px-3 pb-1 pt-2 label text-faint">${esc(branchTitle(br))}</div>` : '') +
+      br.steps.map((s, si) => `<button type="button" data-step="${bi}:${si}" class="step-opt ${optCls}">
+          <span class="flex items-center gap-2"><span class="flex h-5 w-5 items-center justify-center rounded-full bg-accent-tint text-[11px] font-semibold text-accent ring-1 ring-line">${si + 1}</span>${esc(s.label)}</span>
+          <span class="text-xs text-faint">${s.fields.length} input${s.fields.length === 1 ? '' : 's'}</span>
+        </button>`).join('')).join('');
+    $('step-btn').disabled = false;
+
+    // Details
+    $('d-name').textContent = b.name;
+    $('d-sub').textContent = c ? `${c.name} · ${c.group}${c.notes ? ' · ' + c.notes : ''}` : 'No catalog targets linked to this brand yet.';
+    $('d-targets').classList.toggle('hidden', !c);
+    if (c) { $('d-length').textContent = c.video_length; $('d-words').textContent = c.word_count; $('d-production').textContent = c.production; $('d-drive').href = c.drive_url; }
+    $('d-drive').classList.toggle('hidden', !c);
+    $('d-drive').classList.toggle('inline-flex', !!c);
+    $('d-rules').classList.toggle('hidden', !b.rules);
+    $('d-rules-text').textContent = b.rules || '';
+    reveal('details');
+    reveal('flow-card');
+
+    chooseStep(0, 0);
+  }
+
+  function chooseLang(lang, rerender = true) {
+    state.lang = lang;
+    setLabel('lang', lang);
+    document.querySelectorAll('.lang-opt').forEach((o) => o.classList.toggle('bg-accent-tint', o.dataset.lang === lang));
+    if (rerender && state.brand) refresh();
+  }
+
+  // ---------- flow strip
+  function renderFlow() {
+    $('flow').innerHTML = state.brand.branches.map((br, bi) => `
+      <div>
+        ${br.condition ? `<div class="mb-2 text-xs font-semibold uppercase tracking-wide text-faint">${esc(branchTitle(br))}</div>` : ''}
+        <div class="flex flex-wrap items-center gap-2">
+          ${br.steps.map((s, si) => {
+            const on = bi === state.bi && si === state.si;
+            return `<button type="button" data-step="${bi}:${si}"
+                class="step-opt inline-flex items-center gap-2 rounded-full px-3.5 py-1.5 text-sm font-semibold transition ${on ? 'bg-accent text-white shadow-md' : 'border border-line bg-paper text-ink hover:border-[#cfccc3] '}">
+                <span class="text-xs ${on ? 'text-white/70' : 'text-accent'}">${si + 1}</span>${esc(s.label)}</button>` +
+              (si < br.steps.length - 1 ? '<span class="text-faint">→</span>' : '');
+          }).join('')}
+        </div>
+      </div>`).join('');
+  }
+
+  // ---------- step
+  function chooseStep(bi, si) {
+    state.bi = bi; state.si = si;
+    const br = state.brand.branches[bi];
+    const s = br.steps[si];
+    setLabel('step', `${si + 1}. ${s.label}`);
+    document.querySelectorAll('#step-panel .step-opt').forEach((o) => o.classList.toggle('bg-accent-tint', o.dataset.step === `${bi}:${si}`));
+    renderFlow();
+
+    $('s-num').textContent = si + 1;
+    $('s-title').textContent = `${s.label} step`;
+    $('s-branch').textContent = `${br.condition ? branchTitle(br) + ' · ' : ''}Step ${si + 1} of ${br.steps.length}`;
+    $('s-prompts').innerHTML = s.prompt_inputs.length
+      ? s.prompt_inputs.map((p) => p.available
+          ? `<span class="rounded-full bg-card px-3 py-1 text-xs font-medium text-muted">✓ ${esc(p.source.replace(/_/g, ' '))} prompt from admin</span>`
+          : `<span class="rounded-full bg-amber-50 px-3 py-1 text-xs font-medium text-amber-700 ring-1 ring-amber-200">⚠ ${esc(p.source.replace(/_/g, ' '))} prompt missing in admin</span>`).join('')
+      : (s.has_prompt ? '' : '<span class="rounded-full bg-amber-50 px-3 py-1 text-xs font-medium text-amber-700 ring-1 ring-amber-200">⚠ No prompt set in admin</span>');
+
+    $('s-fields').innerHTML = s.fields.length ? s.fields.map((f) => {
+      const id = `f-${bi}-${si}-${f.name}`;
+      const badge = f.required
+        ? '<span class="rounded-full bg-accent-tint px-2 py-0.5 text-[11px] font-medium text-accent ring-1 ring-line">Required</span>'
+        : '<span class="rounded-full bg-card px-2 py-0.5 text-[11px] font-medium text-muted">Optional</span>';
+      const from = f.kind === 'generated'
+        ? `<span class="rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700 ring-1 ring-emerald-100">Output of the ${esc(f.source_label)} step</span>` : '';
+      const hint = f.kind === 'generated'
+        ? `Paste the ${esc(f.source_label.toLowerCase())} result here, or run the ${esc(f.source_label)} step first.`
+        : (f.multiline ? `Paste the ${esc(f.label.toLowerCase())}…` : esc(f.label));
+      if (!f.multiline) {
+        return `<div class="fade-in">
+            <div class="mb-1.5 flex flex-wrap items-center gap-2">
+              <label for="${esc(id)}" class="text-sm font-semibold text-ink">${esc(f.label)}</label>${badge}${from}
+            </div>
+            <input id="${esc(id)}" data-field="${esc(f.name)}" type="text" class="${inputCls}" placeholder="${hint}">
+          </div>`;
+      }
+      // Long text: paste it, or load it from a .txt file.
+      const mode = state.modes[f.name] || 'paste';
+      const tab = (m, text) => `<button type="button" data-mode="${m}" data-for="${esc(f.name)}" data-toggle
+          class="mode-btn rounded-lg px-3 py-1 text-xs font-semibold transition ${mode === m ? 'bg-paper text-accent ' : 'text-muted hover:text-ink'}">${text}</button>`;
+      return `<div class="fade-in" data-wrap="${esc(f.name)}">
+          <div class="mb-1.5 flex flex-wrap items-center gap-2">
+            <label for="${esc(id)}" class="text-sm font-semibold text-ink">${esc(f.label)}</label>${badge}${from}
+            <div class="ml-auto flex items-center gap-3">
+              <span data-count="${esc(f.name)}" class="text-xs text-faint"></span>
+              <div class="inline-flex rounded-lg bg-accent-tint p-1 ring-1 ring-line">${tab('paste', 'Paste')}${tab('file', '.txt file')}${f.kind === 'generated' ? tab('saved', 'Saved') : ''}</div>
+            </div>
+          </div>
+          <div data-pane="paste" class="${mode === 'paste' ? '' : 'hidden'}">
+            <textarea id="${esc(id)}" data-field="${esc(f.name)}" rows="${f.kind === 'generated' ? 8 : 6}" class="${inputCls} resize-y leading-6" placeholder="${hint}"></textarea>
+          </div>
+          <div data-pane="file" class="${mode === 'file' ? '' : 'hidden'}">
+            <label data-drop="${esc(f.name)}"
+                   class="flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-line bg-paper px-4 py-7 text-center transition duration-200 hover:border-[#cfccc3]">
+              <svg class="h-7 w-7 text-accent" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H7a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V7z"/><path d="M14 3v4h4"/><path d="M9 12h6M9 15.5h6"/></svg>
+              <span class="mt-2 text-sm font-semibold text-ink">Drop a <code class="rounded bg-accent-tint px-1.5 py-0.5 text-xs text-accent">.txt</code> file or <span class="text-accent">choose one</span></span>
+              <span class="mt-1 text-xs text-faint">UTF-8 text · up to ${MAX_TXT_MB} MB</span>
+              <input type="file" accept=".txt,text/plain" data-file-for="${esc(f.name)}" class="sr-only">
+            </label>
+            <div data-file-info="${esc(f.name)}" class="mt-2 hidden"></div>
+          </div>
+          ${f.kind === 'generated' ? `<div data-pane="saved" class="${mode === 'saved' ? '' : 'hidden'}">
+            <div data-saved-list="${esc(f.name)}" data-source="${esc(f.source)}" class="rounded-lg border border-line"></div>
+          </div>` : ''}
+        </div>`;
+    }).join('') : '<p class="rounded-lg bg-card px-4 py-3 text-sm text-muted">This step has no inputs listed in the admin config.</p>';
+    s.fields.forEach((f) => {
+      document.getElementById(`f-${bi}-${si}-${f.name}`).value = state.values[f.name] || '';
+      if (f.multiline) renderFileInfo(f.name);
+      if ((state.modes[f.name] || 'paste') === 'saved') loadSavedList(f.name);
+    });
+    renderResult();
+
+    $('run').textContent = `Run ${s.label} →`;
+    const hasNext = si < br.steps.length - 1;
+    $('next').classList.toggle('hidden', !hasNext);
+    $('next').classList.toggle('inline-flex', hasNext);
+    if (hasNext) $('next').textContent = `Next: ${br.steps[si + 1].label} →`;
+
+    reveal('step-card');
+    refresh();
+  }
+
+  // Effort for a step: CLI_STEP_EFFORTS, else the provider's default. Mirrors the server.
+  function stepEffort(step) {
+    const p = providerByKey[state.provider];
+    const e = PROVIDERS.step_efforts[step] || p.effort;
+    return p.key === 'claude' && e === 'ultra' ? 'max' : e;
+  }
+
+  function refresh() {
+    const s = currentStep();
+    s.fields.forEach((f) => {
+      const c = document.querySelector(`[data-count="${CSS.escape(f.name)}"]`);
+      if (c) c.textContent = filled(f.name) ? `${words(state.values[f.name])} words` : '';
+    });
+    const missing = s.fields.filter((f) => f.required && !filled(f.name)).map((f) => f.label);
+    $('run').disabled = !state.lang || missing.length > 0 || !!state.running;
+    if (state.running) return;  // the timer owns the status line while Claude works
+    const effort = stepEffort(s.name);
+    $('s-effort').textContent = `${effort[0].toUpperCase()}${effort.slice(1)} effort`;
+    const target = state.brand.catalog ? ` · target ${state.brand.catalog.word_count}` : '';
+    $('status').textContent = !state.lang ? 'Choose a language first.'
+      : missing.length ? `Still needed: ${missing.join(', ')}.`
+      : `Ready to run ${s.label} with ${providerByKey[state.provider].label} · ${effort} effort · ${state.lang}${s.name === 'script' ? target : ''}`;
+  }
+
+  // ---------- .txt file input
+  function fieldEl(name) { return document.querySelector(`#s-fields [data-field="${CSS.escape(name)}"]`); }
+
+  function renderFileInfo(name, error) {
+    const box = document.querySelector(`[data-file-info="${CSS.escape(name)}"]`);
+    if (!box) return;
+    const file = state.files[name];
+    if (error) {
+      box.className = 'mt-2 rounded-lg border border-line bg-accent-tint px-4 py-2.5 text-sm font-medium text-accent-dark fade-in';
+      box.textContent = error;
+      return;
+    }
+    if (!file) { box.className = 'mt-2 hidden'; box.innerHTML = ''; return; }
+    const edited = (state.values[name] || '') !== file.text;
+    box.className = 'mt-2 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2.5 fade-in';
+    box.innerHTML = `<span class="min-w-0 text-sm text-emerald-800">
+        <span class="font-semibold">✓ ${esc(file.name)}</span>
+        <span class="text-emerald-600"> · ${words(file.text)} words${edited ? ' · edited after loading' : ''}</span>
+      </span>
+      <span class="flex gap-3 text-xs font-semibold">
+        <button type="button" data-mode="paste" data-for="${esc(name)}" class="mode-btn text-emerald-700 transition hover:text-accent">View / edit</button>
+        <button type="button" data-clear-file="${esc(name)}" class="text-emerald-700 transition hover:text-accent">Remove</button>
+      </span>`;
+  }
+
+  function setMode(name, mode) {
+    state.modes[name] = mode;
+    const wrap = document.querySelector(`[data-wrap="${CSS.escape(name)}"]`);
+    if (!wrap) return;
+    wrap.querySelectorAll('[data-pane]').forEach((p) => p.classList.toggle('hidden', p.dataset.pane !== mode));
+    wrap.querySelectorAll('[data-toggle]').forEach((b) => {
+      const on = b.dataset.mode === mode;
+      b.className = `mode-btn rounded-lg px-3 py-1 text-xs font-semibold transition ${on ? 'bg-paper text-accent ' : 'text-muted hover:text-ink'}`;
+    });
+    if (mode === 'paste') fieldEl(name).focus();
+    if (mode === 'saved') loadSavedList(name);
+  }
+
+  // ---------- saved outputs of earlier steps (picked by hand)
+  async function loadSavedList(name) {
+    const box = document.querySelector(`[data-saved-list="${CSS.escape(name)}"]`);
+    if (!box) return;
+    const step = box.dataset.source;
+    box.innerHTML = '<p class="px-4 py-3 text-sm text-muted">Loading saved results…</p>';
+    try {
+      const res = await fetch(`/api/scripting/outputs?step=${encodeURIComponent(step)}&brand=${encodeURIComponent(state.brand.key)}`);
+      const { outputs } = await res.json();
+      if (!outputs.length) {
+        box.innerHTML = `<p class="px-4 py-3 text-sm text-muted">No saved ${esc(step)} results for this brand yet. Run the ${esc(step)} step first.</p>`;
+        return;
+      }
+      const chosen = state.files[name] && state.files[name].saved;
+      box.innerHTML = `<div class="max-h-64 divide-y divide-line overflow-y-auto">${outputs.map((o) => `
+        <button type="button" data-pick="${esc(name)}" data-url="${esc(o.url)}" data-file="${esc(o.name)}"
+                class="flex w-full items-center justify-between gap-3 px-4 py-2.5 text-left text-sm transition hover:bg-card ${chosen === o.name ? 'bg-accent-tint' : ''}">
+          <span class="min-w-0">
+            <span class="block truncate font-medium text-ink">${esc(o.title || o.name)}</span>
+            <span class="block text-xs text-faint">${esc(new Date(o.created_at).toLocaleString())}${o.language ? ' · ' + esc(o.language) : ''}${o.words ? ' · ' + o.words + ' words' : ''}${o.provider ? ` · <span class="inline-flex translate-y-0.5 items-center">${picon(o.provider).replace('h-4 w-4', 'h-3.5 w-3.5')}</span>` : ''}</span>
+          </span>
+          <span class="flex-shrink-0 text-xs font-semibold text-accent">${chosen === o.name ? '✓ Using' : 'Use'}</span>
+        </button>`).join('')}</div>`;
+    } catch {
+      box.innerHTML = '<p class="px-4 py-3 text-sm text-accent">Couldn’t load saved results.</p>';
+    }
+  }
+
+  async function pickSaved(name, url, file) {
+    const res = await fetch(url + '?inline=true');
+    if (!res.ok) return;
+    const text = (await res.text()).replace(/\r\n?/g, '\n');
+    state.files[name] = { name: file, text, saved: file };
+    state.values[name] = text;
+    fieldEl(name).value = text;
+    renderFileInfo(name);
+    loadSavedList(name);
+    refresh();
+  }
+
+  // ---------- run a step through Claude
+  const fmtTime = (s) => s >= 60 ? `${Math.floor(s / 60)}m ${String(Math.round(s % 60)).padStart(2, '0')}s` : `${Math.round(s)}s`;
+
+  function renderResult() {
+    const box = $('result');
+    const r = state.results[resultKey()];
+    if (!r) { box.className = 'mt-5 hidden'; box.innerHTML = ''; return; }
+    if (r.error) {
+      box.className = 'mt-5 fade-in rounded-lg border border-line bg-accent-tint p-4';
+      box.innerHTML = `<div class="text-sm font-semibold text-accent-dark">The ${esc(currentStep().label)} step failed</div>
+        <p class="mt-1 whitespace-pre-wrap text-sm text-accent-dark">${esc(r.error)}</p>`;
+      return;
+    }
+    const m = r.meta;
+    const who = picon(m.provider);
+    const tokens = r.usage ? (r.usage.input_tokens || 0) + (r.usage.output_tokens || 0) : 0;
+    // Claude's figure is an API-price estimate; subscription logins aren't billed per run.
+    const usage = m.cost_usd != null ? ` · ≈ $${Number(m.cost_usd).toFixed(3)} API-equivalent`
+      : tokens ? ` · ${tokens.toLocaleString()} tokens` : '';
+    box.className = 'mt-5 fade-in overflow-hidden rounded-lg border border-emerald-200';
+    box.innerHTML = `
+      <div class="flex flex-wrap items-center justify-between gap-3 bg-emerald-50 px-4 py-3">
+        <div class="min-w-0">
+          <div class="text-sm font-semibold text-emerald-800">✓ ${esc(currentStep().label)} ready · ${r.words.toLocaleString()} words</div>
+          <div class="flex flex-wrap items-center gap-x-1 text-xs text-emerald-700"><span class="inline-flex items-center">${who}</span> ${esc(m.model)} · ${esc(m.effort)} · ${fmtTime(m.duration_s)}${usage} · saved to <code>output/${esc(r.file.step)}/${esc(r.file.name)}</code></div>
+        </div>
+        <div class="flex gap-2">
+          <button type="button" id="copy-result" class="rounded-lg border border-emerald-200 bg-paper px-3 py-2 text-xs font-semibold text-emerald-800 transition">Copy</button>
+          <a href="${esc(r.file.url)}" download class="inline-flex items-center gap-1 rounded-lg bg-accent px-4 py-2 text-xs font-semibold text-white transition hover:bg-accent-dark">Download .txt ↓</a>
+        </div>
+      </div>
+      <pre class="max-h-[28rem] overflow-auto whitespace-pre-wrap break-words bg-paper px-4 py-3 font-sans text-sm leading-7 text-ink">${esc(r.text)}</pre>`;
+    $('copy-result').addEventListener('click', async (e) => {
+      try { await navigator.clipboard.writeText(r.text); e.target.textContent = 'Copied ✓'; } catch { e.target.textContent = 'Copy failed'; }
+    });
+  }
+
+  async function runStep() {
+    const s = currentStep();
+    const key = resultKey();
+    const inputs = Object.fromEntries(s.fields.filter((f) => filled(f.name)).map((f) => [f.name, state.values[f.name]]));
+    const started = Date.now();
+    state.running = key;
+    $('run').disabled = true;
+    $('run').innerHTML = `<svg class="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" opacity=".25"/><path d="M22 12a10 10 0 0 0-10-10" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg> Running ${esc(s.label)}…`;
+    const who = providerByKey[state.provider].label;
+    const tick = () => { $('status').textContent = `${who} is writing the ${s.label.toLowerCase()}… ${fmtTime((Date.now() - started) / 1000)} (long steps can take several minutes)`; };
+    tick();
+    const timer = setInterval(tick, 1000);
+    try {
+      const res = await fetch('/api/scripting/run', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ brand: state.brand.key, branch: state.bi, step: s.name, language: state.lang, inputs, provider: state.provider }),
+      });
+      let data = null;
+      try { data = await res.json(); } catch { /* not JSON */ }
+      if (!res.ok) throw new Error((data && (typeof data.detail === 'string' ? data.detail : JSON.stringify(data.detail))) || `Request failed (${res.status})`);
+      state.results[key] = data;
+    } catch (err) {
+      state.results[key] = { error: err.message === 'Failed to fetch' ? 'Lost connection to the server.' : err.message };
+    } finally {
+      clearInterval(timer);
+      state.running = null;
+      $('run').textContent = `Run ${currentStep().label} →`;
+      if (resultKey() === key) renderResult();
+      refresh();
+      if (state.results[key] && !state.results[key].error) $('status').textContent = `Done in ${fmtTime((Date.now() - started) / 1000)}.`;
+    }
+  }
+
+  async function loadTxt(name, file) {
+    if (!/\.txt$/i.test(file.name) && file.type !== 'text/plain') return renderFileInfo(name, `"${file.name}" isn't a .txt file.`);
+    if (file.size > MAX_TXT_MB * 1024 * 1024) return renderFileInfo(name, `"${file.name}" is larger than ${MAX_TXT_MB} MB.`);
+    let text;
+    try {
+      const buf = await file.arrayBuffer();
+      text = new TextDecoder('utf-8', { fatal: true }).decode(buf).replace(/^﻿/, '').replace(/\r\n?/g, '\n');
+    } catch {
+      return renderFileInfo(name, `"${file.name}" isn't UTF-8 text. Save it as UTF-8 and try again.`);
+    }
+    if (!text.trim()) return renderFileInfo(name, `"${file.name}" is empty.`);
+    state.files[name] = { name: file.name, text };
+    state.values[name] = text;
+    fieldEl(name).value = text;
+    renderFileInfo(name);
+    refresh();
+  }
+
+  document.addEventListener('change', (e) => {
+    const name = e.target.dataset && e.target.dataset.fileFor;
+    if (name && e.target.files[0]) { loadTxt(name, e.target.files[0]); e.target.value = ''; }
+  });
+  ['dragenter', 'dragover'].forEach((ev) => document.addEventListener(ev, (e) => {
+    const zone = e.target.closest && e.target.closest('[data-drop]');
+    if (!zone) return;
+    e.preventDefault();
+    zone.classList.add('border-accent', 'bg-accent-tint', 'scale-[1.01]');
+  }));
+  ['dragleave', 'drop'].forEach((ev) => document.addEventListener(ev, (e) => {
+    const zone = e.target.closest && e.target.closest('[data-drop]');
+    if (!zone) return;
+    e.preventDefault();
+    zone.classList.remove('border-accent', 'bg-accent-tint', 'scale-[1.01]');
+    if (ev === 'drop' && e.dataTransfer.files[0]) loadTxt(zone.dataset.drop, e.dataTransfer.files[0]);
+  }));
+  // Dropping a file anywhere else shouldn't navigate away from the page.
+  ['dragover', 'drop'].forEach((ev) => window.addEventListener(ev, (e) => {
+    if (!(e.target.closest && e.target.closest('[data-drop]'))) e.preventDefault();
+  }));
+
+  // ---------- events
+  document.addEventListener('click', (e) => {
+    const mb = e.target.closest('.mode-btn');
+    if (mb) { setMode(mb.dataset.for, mb.dataset.mode); return; }
+    const po = e.target.closest('.provider-opt');
+    if (po) { chooseProvider(po.dataset.provider); closeAll(); return; }
+    const pk = e.target.closest('[data-pick]');
+    if (pk) { pickSaved(pk.dataset.pick, pk.dataset.url, pk.dataset.file); return; }
+    const cf = e.target.closest('[data-clear-file]');
+    if (cf) {
+      const name = cf.dataset.clearFile;
+      delete state.files[name];
+      state.values[name] = '';
+      fieldEl(name).value = '';
+      renderFileInfo(name);
+      refresh();
+      return;
+    }
+    const bo = e.target.closest('.brand-opt');
+    if (bo) { chooseBrand(bo.dataset.brand); closeAll(); return; }
+    const lo = e.target.closest('.lang-opt');
+    if (lo) { chooseLang(lo.dataset.lang); closeAll(); return; }
+    const so = e.target.closest('.step-opt');
+    if (so) { const [bi, si] = so.dataset.step.split(':').map(Number); chooseStep(bi, si); closeAll(); }
+  });
+  document.addEventListener('input', (e) => {
+    const name = e.target.dataset && e.target.dataset.field;
+    if (!name || !state.brand) return;
+    state.values[name] = e.target.value;
+    if (state.files[name]) renderFileInfo(name);  // mark "edited after loading"
+    refresh();
+  });
+  $('next').addEventListener('click', () => chooseStep(state.bi, state.si + 1));
+  $('run').addEventListener('click', runStep);
+</script>
+{% endif %}
+{% endblock %}
