@@ -179,7 +179,7 @@ def test_run_cli_error_is_502_and_nothing_saved(config, monkeypatch):
 
 def test_conditional_branch_runs_paraphrasing(config):
     r = run(brand="t_brand_1", branch=1, step="paraphrasing", language="English",
-            inputs={"competitor_script": "Their script"})
+            inputs={"competitor_script": "Their script"}, project_name="Top 10 rivals")
     assert r.status_code == 200, r.text
     assert "Para P" in echoed(r.json()["text"])["prompt"]
 
@@ -254,7 +254,7 @@ def _argv_effort(argv, flag="--effort"):
     ("audits", {"video_title": "T", "script": "S"}, "high"),
 ])
 def test_run_uses_step_effort_for_claude(config, step, inputs, expected):
-    data = run(step=step, inputs=inputs).json()
+    data = run(step=step, inputs=inputs, new_project=True).json()
     assert _argv_effort(echoed(data["text"])["argv"]) == expected
     assert data["meta"]["effort"] == expected
     dump = (get_cli_settings().output_dir / step / data["file"]["name"]).with_name(
@@ -293,3 +293,30 @@ def test_page_gets_step_efforts(config):
     assert block and json.loads(block.group(1)) == {
         "research": "high", "outline": "high", "script": "medium", "audits": "high",
         "paraphrasing": "high"}
+
+
+# ------------------------------------------------------------ effort picked on the page
+
+def test_picked_effort_overrides_the_step_effort(config):
+    data = run(effort="low", new_project=True).json()   # outline is "high" in CLI_STEP_EFFORTS
+    assert _argv_effort(echoed(data["text"])["argv"]) == "low" and data["meta"]["effort"] == "low"
+    codex = run(provider="codex", effort="ultra", new_project=True).json()
+    assert "model_reasoning_effort=ultra" in echoed(codex["text"])["argv"]
+
+
+def test_empty_effort_keeps_the_step_effort(config):
+    data = run(effort=None, new_project=True).json()
+    assert data["meta"]["effort"] == "high"
+
+
+@pytest.mark.parametrize("provider, effort", [("claude", "ultra"), ("codex", "extreme")])
+def test_effort_the_model_doesnt_have_is_rejected(config, provider, effort):
+    r = run(provider=provider, effort=effort, new_project=True)
+    assert r.status_code == 400 and effort in r.json()["detail"]
+
+
+def test_providers_list_their_effort_levels():
+    from app.cli.config import provider_info
+    levels = {p["key"]: p["efforts"] for p in provider_info()["providers"]}
+    assert levels == {"claude": ["low", "medium", "high", "xhigh", "max"],
+                      "codex": ["low", "medium", "high", "xhigh", "max", "ultra"]}

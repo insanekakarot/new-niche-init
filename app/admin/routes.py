@@ -1,6 +1,9 @@
+import re
+
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 
+from app import keys
 from app.admin import scripts_config as sc
 from app.admin.auth import (
     COOKIE_NAME,
@@ -11,7 +14,10 @@ from app.admin.auth import (
     session_token,
 )
 from app.config import settings
+from app.rules import explain, lang
 from app.web.pages import templates
+from app.web.rule_jobs import word_range
+from app.web.scripting import catalog_for
 
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 ALLOWED_SUFFIXES = (".tsv", ".txt")
@@ -69,9 +75,59 @@ def logout():
 @router.get("/scripts/dashboard", response_class=HTMLResponse,
             dependencies=[Depends(require_admin_page)])
 def dashboard(request: Request):
+    s = sc.status()
     return templates.TemplateResponse(
         request, "admin/dashboard.html",
-        {"s": sc.status(), "step_names": list(sc.STEP_COLUMNS), "active": "dashboard"},
+        {"s": s, "step_names": list(sc.STEP_COLUMNS), "active": "dashboard",
+         "rules": _rules_views(s.get("config") or [])},
+    )
+
+
+def _rules_views(config: list[dict]) -> dict[str, dict]:
+    """Per brand: its Rules line by line with notes, its Rule Prompts, and a sample run."""
+    views = {}
+    for entry in config:
+        for key, brand in entry.items():
+            catalog = catalog_for(key) or {}
+            values = {"words_range": word_range(catalog.get("word_count")),
+                      "word_count": catalog.get("word_count"),
+                      "video_length": catalog.get("video_length"),
+                      "brand_name": brand.get("brand_name")}
+            view = explain.brand_rules(brand, sc.STEP_COLUMNS,
+                                       {k: v for k, v in values.items() if v})
+            if view:
+                views[key] = view
+    return views
+
+
+_CHECK_WORDS = ("VALIDATION", "CHECK", "SATISFACTION", "REVIEW")
+
+
+def _example_rows(text: str) -> dict:
+    """One example from keys.RULE_EXAMPLES, laid out line by line with notes."""
+    program = lang.parse(text, sc.STEP_COLUMNS)
+    names = program.prompt_names()
+    # Example names only: ones that read like checks are shown as checks.
+    prompts = {n: "STATUS - READY" if any(w in n for w in _CHECK_WORDS) else "Fix it."
+               for n in names}
+    return {"guidance": program.guidance,
+            "lines": [{**line, "segments": explain.segments(line["code"], names)}
+                      for line in explain.lines(program, prompts)]}
+
+
+@router.get("/scripts/rules-guide", response_class=HTMLResponse,
+            dependencies=[Depends(require_admin_page)])
+def rules_guide(request: Request):
+    examples = [{"about": about, **_example_rows(text)} for about, text in keys.RULE_EXAMPLES]
+    featured = next((e for e in examples if "TITLE_SATISFACTION" in str(e["lines"])), examples[0])
+    numbers = {"DEFAULT_MAX_LOOP": str(keys.DEFAULT_MAX_LOOP),
+               "HARD_MAX_LOOP": str(keys.HARD_MAX_LOOP)}
+    statements = [(key, re.sub("|".join(numbers), lambda m: numbers[m.group()], about))
+                  for key, about in keys.RULE_KEYWORDS.items()]
+    return templates.TemplateResponse(
+        request, "admin/rules_guide.html",
+        {"active": "guide", "keys": keys, "featured": featured, "statements": statements,
+         "examples": [e for e in examples if e is not featured]},
     )
 
 

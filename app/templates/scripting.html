@@ -18,6 +18,15 @@
   <div id="{{ id }}-panel" class="dd-panel absolute left-0 right-0 z-20 mt-2 max-h-80 overflow-y-auto rounded-lg border border-line bg-paper p-1.5 shadow-[0_8px_24px_rgba(30,28,26,.08)]">{{ caller() if caller }}</div>
 </div>
 {% endmacro %}
+{% block head %}
+<style>
+  /* On/off switch: <button role="switch" aria-checked="true|false"> <span class="sw"><span class="knob"> */
+  [role="switch"] .sw { background: #e4e3db; transition: background-color .2s ease; }
+  [role="switch"] .knob { transition: transform .2s ease; }
+  [role="switch"][aria-checked="true"] .sw { background: #c8322b; }
+  [role="switch"][aria-checked="true"] .knob { transform: translateX(16px); }
+</style>
+{% endblock %}
 {% block content %}
   {{ page_header("01", "Tools / Scripting", "Scripting", "tool.", tool.description, icon="scripting", live=true, aside="Claude · Codex") }}
   <div class="px-6 py-10 sm:px-10">
@@ -72,7 +81,7 @@
               {{ picon(p.key, "h-5 w-5") }}
               <span class="min-w-0">
                 <span class="block truncate">{{ p.model }}</span>
-                <span class="block text-xs text-faint">Effort set per step</span>
+                <span class="block text-xs text-faint">Choose the effort per step</span>
               </span>
             </button>
             {% endfor %}
@@ -109,6 +118,8 @@
             </button>
             <div class="acc-body"><div>
               <pre id="d-rules-text" class="whitespace-pre-wrap break-words border-t border-line bg-card px-4 py-3 font-sans text-xs leading-6 text-ink"></pre>
+              <pre id="d-rules-program" class="hidden whitespace-pre-wrap break-words border-t border-line bg-paper px-4 py-3 font-mono text-[11px] leading-5 text-ink"></pre>
+              <p id="d-rules-error" class="hidden border-t border-amber-200 bg-amber-50 px-4 py-2.5 text-xs text-amber-800"></p>
             </div></div>
           </div>
           <a id="d-drive" href="#" target="_blank" rel="noopener"
@@ -137,12 +148,51 @@
           </div>
         </div>
         <div class="flex flex-wrap items-center gap-2">
-          <span id="s-effort" class="rounded bg-accent-tint px-2 py-0.5 text-[12px] font-medium text-accent" title="Set per step in .env (CLI_STEP_EFFORTS)"></span>
           <div id="s-prompts" class="flex flex-wrap gap-2"></div>
         </div>
       </div>
 
+      <!-- Effort for this step: the levels of the chosen model; remembered per model and step -->
+      <div class="mt-4 flex flex-wrap items-center gap-x-3 gap-y-2">
+        <span class="text-sm font-semibold text-ink">Effort</span>
+        <div id="s-effort" role="radiogroup" aria-label="Effort for this step"
+             class="inline-flex flex-wrap gap-0.5 rounded-lg border border-line bg-card p-0.5"></div>
+        <span id="s-effort-hint" class="text-xs text-faint"></span>
+      </div>
+
+      <!-- Project: one conversation per project; later steps resume it -->
+      <div class="mt-5 rounded-lg border border-line bg-card p-4">
+        <div class="flex flex-wrap items-end gap-3">
+          <div class="min-w-[14rem] flex-1">
+            <label for="project-name" class="mb-1.5 block text-sm font-semibold text-ink">Project</label>
+            <input id="project-name" type="text" maxlength="200" autocomplete="off"
+                   class="w-full rounded-lg border border-line bg-paper px-4 py-3 text-sm text-ink placeholder:text-faint transition focus:border-accent/50 focus:outline-none focus:ring-2 focus:ring-accent/15">
+          </div>
+          <button id="new-project" type="button" role="switch" aria-checked="true"
+                  class="flex h-[46px] items-center gap-3 rounded-lg border border-line bg-paper px-4 text-sm font-semibold text-ink transition hover:border-[#cfccc3] focus:outline-none focus:ring-2 focus:ring-accent/15">
+            <span class="sw relative inline-flex h-5 w-9 flex-shrink-0 rounded-full"><span class="knob absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-white shadow"></span></span>
+            New project
+          </button>
+        </div>
+        <p id="project-hint" class="mt-2 text-xs leading-5 text-muted"></p>
+      </div>
+
       <div id="s-fields" class="mt-5 grid gap-4"></div>
+
+      <!-- Rules that run after this step (Rules column, e.g. '> audits LOOP { ... }') -->
+      <div id="s-rules" class="mt-5 hidden rounded-lg border border-line bg-card p-4">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <div class="min-w-0">
+            <div class="text-sm font-semibold text-ink">Rules after this step</div>
+            <p id="s-rules-text" class="mt-0.5 text-xs leading-5 text-muted"></p>
+          </div>
+          <button id="run-rules" type="button" role="switch" aria-checked="true"
+                  class="flex h-[38px] items-center gap-3 rounded-lg border border-line bg-paper px-3 text-sm font-semibold text-ink transition hover:border-[#cfccc3] focus:outline-none focus:ring-2 focus:ring-accent/15">
+            <span class="sw relative inline-flex h-5 w-9 flex-shrink-0 rounded-full"><span class="knob absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-white shadow"></span></span>
+            Run the rules
+          </button>
+        </div>
+      </div>
 
       <div class="mt-6 flex flex-wrap items-center gap-3 border-t border-line pt-5">
         <button id="run" type="button" disabled
@@ -158,6 +208,8 @@
 
       <!-- Claude's response for this step -->
       <div id="result" class="mt-5 hidden"></div>
+      <!-- Progress of the rules after this step, then the final script -->
+      <div id="rules-result" class="mt-4 hidden"></div>
     </div>
   </div>
   {% endif %}
@@ -171,12 +223,22 @@
   const byKey = Object.fromEntries(BRANDS.map((b) => [b.key, b]));
   const $ = (id) => document.getElementById(id);
   const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-  const state = { brand: null, lang: null, bi: 0, si: 0, values: {}, modes: {}, files: {}, results: {}, running: null };
+  // newProject: the toggle (on by default for a flow's first step only).
+  // projectName: what's typed in Project (empty = the video title).
+  // project: the project the last successful step ran in, continued by the next steps.
+  const state = { brand: null, lang: null, bi: 0, si: 0, values: {}, modes: {}, files: {}, results: {}, running: null,
+                  newProject: true, projectName: '', project: null,
+                  // runRules: the "Run the rules" switch. jobs: rules running/run after a step (by result key).
+                  runRules: true, jobs: {} };
   const resultKey = () => `${state.brand.key}:${state.bi}:${state.si}`;
 
   // ---------- Generate with: Claude or Codex (models come from .env)
   const PROVIDERS = {{ providers | tojson }};
   const providerByKey = Object.fromEntries(PROVIDERS.providers.map((p) => [p.key, p]));
+  // Effort picked per step, per model: { claude: { audits: 'max' }, codex: {...} }. Only
+  // changes from the default are kept; the default comes from .env (see defaultEffort).
+  let savedEfforts = {};
+  try { savedEfforts = JSON.parse(localStorage.getItem('scripting.efforts') || '{}') || {}; } catch { /* storage unavailable */ }
   // The provider's logo (from the <template data-icon> tags), or its name as a fallback.
   const picon = (key) => {
     const t = document.querySelector(`template[data-icon="${CSS.escape(key || '')}"]`);
@@ -191,7 +253,7 @@
     label.classList.remove('text-faint');
     document.querySelectorAll('.provider-opt').forEach((o) => o.classList.toggle('bg-accent-tint', o.dataset.provider === key));
     try { localStorage.setItem('scripting.provider', key); } catch { /* storage unavailable */ }
-    if (state.brand) refresh();
+    if (state.brand) { renderFlow(); renderEffort(); refresh(); }
   }
   let savedProvider = null;
   try { savedProvider = localStorage.getItem('scripting.provider'); } catch { /* storage unavailable */ }
@@ -212,6 +274,37 @@
     return br.condition.startsWith('!') ? `If there is no ${v}` : `If there is a ${v}`;
   }
   const currentStep = () => state.brand.branches[state.bi].steps[state.si];
+
+  // ---------- project (one conversation per project; later steps resume it)
+  const oneLine = (s) => (s || '').trim().replace(/\s+/g, ' ');
+  const projectName = () => oneLine(state.projectName) || oneLine(state.values.video_title);
+  const providerLabel = (key) => (providerByKey[key] || {}).label || key || '';
+  const stepLabel = (name) => name.charAt(0).toUpperCase() + name.slice(1);
+  // The project the last step ran in, if the next request should continue exactly that one.
+  function knownProject() {
+    const p = state.project;
+    return p && !state.newProject && p.brand === state.brand.key && p.branch === state.bi
+      && projectName().toLowerCase() === oneLine(p.name).toLowerCase() ? p : null;
+  }
+  // Continuing a project: earlier steps' results and the inputs already sent are in its
+  // conversation (and saved), so they needn't be filled in again.
+  function isRequired(f) {
+    if (!f.required || state.newProject) return f.required;
+    const p = knownProject();
+    if (f.kind !== 'generated') return !(p && (p.inputs || []).includes(f.name));
+    return p ? !p.steps.includes(f.source) : false;  // otherwise the server checks the project
+  }
+  // The prompt tag for an input, e.g. outline -> double-brace outline. Built from single
+  // braces: two in a row would be read by Jinja (this file is a template).
+  const tag = (name) => '{' + '{' + name + '}' + '}';
+  function setNewProject(on) {
+    state.newProject = on;
+    $('new-project').setAttribute('aria-checked', String(on));
+    refresh();
+  }
+  const reqBadgeCls = 'rounded-full bg-accent-tint px-2 py-0.5 text-[11px] font-medium text-accent ring-1 ring-line';
+  const optBadgeCls = 'rounded-full bg-card px-2 py-0.5 text-[11px] font-medium text-muted';
+  const chatBadgeCls = 'rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700 ring-1 ring-emerald-100';
 
   // ---------- brand
   function chooseBrand(key) {
@@ -243,10 +336,16 @@
     $('d-sub').textContent = c ? `${c.name} · ${c.group}${c.notes ? ' · ' + c.notes : ''}` : 'No catalog targets linked to this brand yet.';
     $('d-targets').classList.toggle('hidden', !c);
     if (c) { $('d-length').textContent = c.video_length; $('d-words').textContent = c.word_count; $('d-production').textContent = c.production; $('d-drive').href = c.drive_url; }
-    $('d-drive').classList.toggle('hidden', !c);
-    $('d-drive').classList.toggle('inline-flex', !!c);
-    $('d-rules').classList.toggle('hidden', !b.rules);
+    $('d-drive').classList.toggle('hidden', !(c && c.drive_url));
+    $('d-drive').classList.toggle('inline-flex', !!(c && c.drive_url));
+    // Rules: plain guidance (added to every prompt) and the control part ('> audits LOOP { ... }').
+    $('d-rules').classList.toggle('hidden', !b.rules && !b.rules_program && !b.rules_error);
     $('d-rules-text').textContent = b.rules || '';
+    $('d-rules-text').classList.toggle('hidden', !b.rules);
+    $('d-rules-program').textContent = b.rules_program || '';
+    $('d-rules-program').classList.toggle('hidden', !b.rules_program);
+    $('d-rules-error').textContent = b.rules_error || '';
+    $('d-rules-error').classList.toggle('hidden', !b.rules_error);
     reveal('details');
     reveal('flow-card');
 
@@ -270,7 +369,8 @@
             const on = bi === state.bi && si === state.si;
             return `<button type="button" data-step="${bi}:${si}"
                 class="step-opt inline-flex items-center gap-2 rounded-full px-3.5 py-1.5 text-sm font-semibold transition ${on ? 'bg-accent text-white shadow-md' : 'border border-line bg-paper text-ink hover:border-[#cfccc3] '}">
-                <span class="text-xs ${on ? 'text-white/70' : 'text-accent'}">${si + 1}</span>${esc(s.label)}</button>` +
+                <span class="text-xs ${on ? 'text-white/70' : 'text-accent'}">${si + 1}</span>${esc(s.label)}
+                <span class="text-[11px] font-medium ${on ? 'text-white/70' : 'text-faint'}" title="Effort">${cap(chosenEffort(s.name))}</span></button>` +
               (si < br.steps.length - 1 ? '<span class="text-faint">→</span>' : '');
           }).join('')}
         </div>
@@ -294,14 +394,17 @@
           ? `<span class="rounded-full bg-card px-3 py-1 text-xs font-medium text-muted">✓ ${esc(p.source.replace(/_/g, ' '))} prompt from admin</span>`
           : `<span class="rounded-full bg-amber-50 px-3 py-1 text-xs font-medium text-amber-700 ring-1 ring-amber-200">⚠ ${esc(p.source.replace(/_/g, ' '))} prompt missing in admin</span>`).join('')
       : (s.has_prompt ? '' : '<span class="rounded-full bg-amber-50 px-3 py-1 text-xs font-medium text-amber-700 ring-1 ring-amber-200">⚠ No prompt set in admin</span>');
+    if (s.code_block) $('s-prompts').innerHTML += '<span class="rounded-full bg-card px-3 py-1 text-xs font-medium text-muted" title="The prompt asks for the result inside a ``` code block. Only the block is saved and passed to the next step; the full response is kept beside it.">Saves the code block as the result</span>';
+    if (s.uses_context) $('s-prompts').innerHTML += '<span class="rounded-full bg-card px-3 py-1 text-xs font-medium text-muted" title="Parts of the prompt written inside &lt;&lt; &gt;&gt; are taken from the project conversation, so they aren’t sent again.">Uses &lt;&lt; &gt;&gt; from the project chat</span>';
+    (s.unknown_placeholders || []).forEach((n) => {
+      $('s-prompts').innerHTML += `<span class="rounded-full bg-amber-50 px-3 py-1 text-xs font-medium text-amber-700 ring-1 ring-amber-200" title="The prompt uses ${esc(tag(n))}, but “${esc(n)}” isn’t one of this step’s inputs in admin, so it is sent as written. Rename it in the prompt or add the input.">⚠ ${esc(tag(n))} isn’t an input of this step</span>`;
+    });
 
     $('s-fields').innerHTML = s.fields.length ? s.fields.map((f) => {
       const id = `f-${bi}-${si}-${f.name}`;
-      const badge = f.required
-        ? '<span class="rounded-full bg-accent-tint px-2 py-0.5 text-[11px] font-medium text-accent ring-1 ring-line">Required</span>'
-        : '<span class="rounded-full bg-card px-2 py-0.5 text-[11px] font-medium text-muted">Optional</span>';
+      const badge = `<span data-req="${esc(f.name)}"></span>`;  // filled in by refresh()
       const from = f.kind === 'generated'
-        ? `<span class="rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700 ring-1 ring-emerald-100">Output of the ${esc(f.source_label)} step</span>` : '';
+        ? `<span class="rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700 ring-1 ring-emerald-100">Output of the ${esc(f.source_label)} step${f.placed ? ` · fills ${esc(tag(f.name))}` : ''}</span>` : '';
       const hint = f.kind === 'generated'
         ? `Paste the ${esc(f.source_label.toLowerCase())} result here, or run the ${esc(f.source_label)} step first.`
         : (f.multiline ? `Paste the ${esc(f.label.toLowerCase())}…` : esc(f.label));
@@ -350,22 +453,75 @@
     });
     renderResult();
 
+    // Project: a new one by default for the first step; later steps continue the saved one.
+    state.newProject = si === 0;
+    $('new-project').setAttribute('aria-checked', String(state.newProject));
+    $('project-name').value = state.projectName;
+    $('project-name').placeholder = s.fields.some((f) => f.name === 'video_title') ? 'Same as the video title' : 'Name this project';
+
+    // Rules after this step
+    const ra = s.rules_after || [];
+    $('s-rules').classList.toggle('hidden', !ra.length);
+    if (ra.length) {
+      $('s-rules-text').innerHTML = `When ${esc(s.label)} finishes, the same conversation runs ${ra.map((n) => `<code class="rounded bg-paper px-1 py-0.5 text-[11px] text-ink">${esc(n)}</code>`).join(' · ')} as the brand rules say, until they end. The latest script from a code block becomes the final ${esc(s.label.toLowerCase())} result.`;
+      $('run-rules').setAttribute('aria-checked', String(state.runRules));
+    }
+    renderRules();
+
     $('run').textContent = `Run ${s.label} →`;
     const hasNext = si < br.steps.length - 1;
     $('next').classList.toggle('hidden', !hasNext);
     $('next').classList.toggle('inline-flex', hasNext);
     if (hasNext) $('next').textContent = `Next: ${br.steps[si + 1].label} →`;
 
+    renderEffort();
     reveal('step-card');
     refresh();
   }
 
-  // Effort for a step: CLI_STEP_EFFORTS, else the provider's default. Mirrors the server.
-  function stepEffort(step) {
-    const p = providerByKey[state.provider];
-    const e = PROVIDERS.step_efforts[step] || p.effort;
-    return p.key === 'claude' && e === 'ultra' ? 'max' : e;
+  // ---------- effort per step
+  const cap = (s) => s ? s[0].toUpperCase() + s.slice(1) : '';
+  // The default for a step: CLI_STEP_EFFORTS, else the model's default. Mirrors the server.
+  function defaultEffort(step, key = state.provider) {
+    const p = providerByKey[key];
+    let e = PROVIDERS.step_efforts[step] || p.effort;
+    if (key === 'claude' && e === 'ultra') e = 'max';
+    return p.efforts.includes(e) ? e : p.effort;
   }
+  // The effort picked on the page for a step, or null when it's the default.
+  function effortOverride(step, key = state.provider) {
+    const e = (savedEfforts[key] || {})[step];
+    return e && providerByKey[key].efforts.includes(e) && e !== defaultEffort(step, key) ? e : null;
+  }
+  const chosenEffort = (step, key = state.provider) => effortOverride(step, key) || defaultEffort(step, key);
+
+  function setEffort(step, level) {
+    const map = savedEfforts[state.provider] = savedEfforts[state.provider] || {};
+    if (!level || level === defaultEffort(step)) delete map[step]; else map[step] = level;
+    try { localStorage.setItem('scripting.efforts', JSON.stringify(savedEfforts)); } catch { /* storage unavailable */ }
+    renderFlow(); renderEffort(); refresh();
+  }
+
+  function renderEffort() {
+    const s = currentStep();
+    if (!s) return;
+    const p = providerByKey[state.provider];
+    const cur = chosenEffort(s.name), def = defaultEffort(s.name);
+    $('s-effort').innerHTML = p.efforts.map((l) => `
+      <button type="button" role="radio" aria-checked="${l === cur}" data-effort="${l}" title="${l === def ? 'Default for this step' : ''}"
+        class="rounded-md px-2.5 py-1 text-[12px] font-medium transition ${l === cur ? 'bg-accent text-white shadow-sm' : 'text-muted hover:bg-paper hover:text-ink'}">${cap(l)}${l === def ? `<span class="ml-1 ${l === cur ? 'text-white/70' : 'text-faint'}">·</span>` : ''}</button>`).join('');
+    const rules = (s.rules_after || []).length ? ` Also used for the rules after ${esc(s.label)}.` : '';
+    $('s-effort-hint').innerHTML = cur === def
+      ? `Default for ${esc(s.label)} with ${esc(p.label)} (·).${rules}`
+      : `Default is ${cap(def)} · <button type="button" data-effort-reset class="font-semibold text-accent hover:underline">Reset</button>${rules}`;
+  }
+  $('s-effort').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-effort]');
+    if (b) setEffort(currentStep().name, b.dataset.effort);
+  });
+  $('s-effort-hint').addEventListener('click', (e) => {
+    if (e.target.closest('[data-effort-reset]')) setEffort(currentStep().name, null);
+  });
 
   function refresh() {
     const s = currentStep();
@@ -373,15 +529,35 @@
       const c = document.querySelector(`[data-count="${CSS.escape(f.name)}"]`);
       if (c) c.textContent = filled(f.name) ? `${words(state.values[f.name])} words` : '';
     });
-    const missing = s.fields.filter((f) => f.required && !filled(f.name)).map((f) => f.label);
-    $('run').disabled = !state.lang || missing.length > 0 || !!state.running;
+    s.fields.forEach((f) => {
+      const b = document.querySelector(`[data-req="${CSS.escape(f.name)}"]`);
+      if (!b) return;
+      const req = isRequired(f);
+      const chat = !req && f.required;  // required on its own, but the project chat has it
+      b.className = req ? reqBadgeCls : chat ? chatBadgeCls : optBadgeCls;
+      b.textContent = req ? 'Required' : chat ? 'Optional · in the project chat' : 'Optional';
+    });
+
+    const name = projectName();
+    const p = knownProject();
+    $('project-hint').innerHTML = state.newProject
+      ? `Starts a new project${name ? ` “${esc(name)}”` : ''} with a fresh ${esc(providerLabel(state.provider))} conversation. The next steps continue it.`
+      : p ? `Continues “${esc(p.name)}” in the same ${esc(providerLabel(p.provider))} conversation (${p.steps.length} step${p.steps.length === 1 ? '' : 's'} so far: ${p.steps.map((n) => esc(stepLabel(n))).join(' → ')}). Earlier results come from that chat.`
+      : name ? `Continues the saved project “${esc(name)}” in its conversation. If there isn't one yet, turn on New project or run the first step.`
+      : 'Name the project to continue (or fill in the video title).';
+
+    const missing = s.fields.filter((f) => isRequired(f) && !filled(f.name)).map((f) => f.label);
+    if (!name) missing.unshift('Project name');
+    const job = runningJob();
+    $('run').disabled = !state.lang || missing.length > 0 || !!state.running || !!job;
     if (state.running) return;  // the timer owns the status line while Claude works
-    const effort = stepEffort(s.name);
-    $('s-effort').textContent = `${effort[0].toUpperCase()}${effort.slice(1)} effort`;
+    if (job) { $('status').textContent = `The rules after ${job.step_label} are still running in “${job.project_name}”…`; return; }
+    const effort = chosenEffort(s.name);
     const target = state.brand.catalog ? ` · target ${state.brand.catalog.word_count}` : '';
+    const how = state.newProject ? 'new project' : `continues “${name}”`;
     $('status').textContent = !state.lang ? 'Choose a language first.'
       : missing.length ? `Still needed: ${missing.join(', ')}.`
-      : `Ready to run ${s.label} with ${providerByKey[state.provider].label} · ${effort} effort · ${state.lang}${s.name === 'script' ? target : ''}`;
+      : `Ready to run ${s.label} with ${providerByKey[state.provider].label} · ${effort} effort · ${state.lang} · ${how}${s.name === 'script' ? target : ''}`;
   }
 
   // ---------- .txt file input
@@ -401,7 +577,7 @@
     box.className = 'mt-2 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2.5 fade-in';
     box.innerHTML = `<span class="min-w-0 text-sm text-emerald-800">
         <span class="font-semibold">✓ ${esc(file.name)}</span>
-        <span class="text-emerald-600"> · ${words(file.text)} words${edited ? ' · edited after loading' : ''}</span>
+        <span class="text-emerald-600"> · ${words(file.text)} words${file.auto ? ` · from the ${esc(stepLabel(file.auto))} step you just ran` : ''}${edited ? ' · edited after loading' : ''}</span>
       </span>
       <span class="flex gap-3 text-xs font-semibold">
         <button type="button" data-mode="paste" data-for="${esc(name)}" class="mode-btn text-emerald-700 transition hover:text-accent">View / edit</button>
@@ -470,9 +646,46 @@
     const r = state.results[resultKey()];
     if (!r) { box.className = 'mt-5 hidden'; box.innerHTML = ''; return; }
     if (r.error) {
+      const d = r.detail || {};
+      const actBtn = (action, text, extra = '') => `<button type="button" data-action="${action}" ${extra}
+          class="rounded-lg border border-line bg-paper px-3 py-2 text-xs font-semibold text-ink transition hover:border-[#cfccc3] hover:text-accent">${text}</button>`;
+      if (d.code === 'choose_project') {
+        box.className = 'mt-5 fade-in overflow-hidden rounded-lg border border-line';
+        box.innerHTML = `<div class="bg-accent-tint px-4 py-3">
+            <div class="text-sm font-semibold text-accent-dark">Choose the project to continue</div>
+            <p class="mt-0.5 text-sm text-accent-dark">${esc(r.error)}</p>
+          </div>
+          <div class="divide-y divide-line">${(d.projects || []).map((p) => `
+            <button type="button" data-continue="${esc(p.id)}"
+                    class="flex w-full items-center justify-between gap-3 px-4 py-3 text-left text-sm transition hover:bg-card">
+              <span class="min-w-0">
+                <span class="block truncate font-medium text-ink">${esc(p.name)}</span>
+                <span class="flex flex-wrap items-center gap-x-1 text-xs text-faint">
+                  <span class="inline-flex translate-y-0.5 items-center">${picon(p.provider).replace('h-4 w-4', 'h-3.5 w-3.5')}</span>
+                  Started ${esc(new Date(p.created_at).toLocaleString())} · last used ${esc(new Date(p.updated_at).toLocaleString())}
+                  · ${p.steps.length} step${p.steps.length === 1 ? '' : 's'}${p.steps.length ? ': ' + p.steps.map((n) => esc(stepLabel(n))).join(' → ') : ''}${p.language ? ' · ' + esc(p.language) : ''}
+                </span>
+              </span>
+              <span class="flex-shrink-0 text-xs font-semibold text-accent">Continue →</span>
+            </button>`).join('')}</div>`;
+        return;
+      }
+      let actions = '';
+      if (d.code === 'project_not_found' || d.code === 'resume_failed') {
+        actions = actBtn('new-project', 'Turn on New project');
+        if (d.code === 'project_not_found' && state.si > 0) {
+          actions += actBtn('first-step', `Go to step 1: ${esc(state.brand.branches[state.bi].steps[0].label)}`);
+        }
+      } else if (d.code === 'provider_mismatch' && providerByKey[d.provider]) {
+        actions = actBtn('switch-provider', `Switch to ${esc(providerLabel(d.provider))}`, `data-provider="${esc(d.provider)}"`)
+          + actBtn('new-project', 'Turn on New project');
+      }
+      const title = d.code === 'project_not_found' ? 'Project not found'
+        : `The ${esc(currentStep().label)} step ${d.code === 'project_busy' ? "can't start yet" : 'failed'}`;
       box.className = 'mt-5 fade-in rounded-lg border border-line bg-accent-tint p-4';
-      box.innerHTML = `<div class="text-sm font-semibold text-accent-dark">The ${esc(currentStep().label)} step failed</div>
-        <p class="mt-1 whitespace-pre-wrap text-sm text-accent-dark">${esc(r.error)}</p>`;
+      box.innerHTML = `<div class="text-sm font-semibold text-accent-dark">${title}</div>
+        <p class="mt-1 whitespace-pre-wrap text-sm text-accent-dark">${esc(r.error)}</p>
+        ${actions ? `<div class="mt-3 flex flex-wrap gap-2">${actions}</div>` : ''}`;
       return;
     }
     const m = r.meta;
@@ -481,28 +694,195 @@
     // Claude's figure is an API-price estimate; subscription logins aren't billed per run.
     const usage = m.cost_usd != null ? ` · ≈ $${Number(m.cost_usd).toFixed(3)} API-equivalent`
       : tokens ? ` · ${tokens.toLocaleString()} tokens` : '';
+    const pr = r.project;
+    const projectLine = pr ? `<div class="text-xs text-emerald-700">Project “${esc(pr.name)}” · ${m.resumed ? 'continued the same conversation' : 'new conversation'} · ${pr.steps.length} step${pr.steps.length === 1 ? '' : 's'} so far</div>` : '';
+    const ex = r.extract || {};
+    const full = !!(r.response && r.showFull);  // showing the whole response instead of the block
+    const shown = full ? r.response : r.text;
+    const next = nextUsers(currentStep().name);
+    const extractLine = r.response
+      ? `<div class="text-xs text-emerald-700">Saved the code block as the result${next.length ? ` · filled into ${next.map(esc).join(', ')}` : ''} · the full response (${words(r.response).toLocaleString()} words) is kept beside it</div>`
+      : '';
+    const warn = ex.warning ? `<div class="border-t border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-800">⚠ ${esc(ex.warning)}</div>` : '';
     box.className = 'mt-5 fade-in overflow-hidden rounded-lg border border-emerald-200';
     box.innerHTML = `
       <div class="flex flex-wrap items-center justify-between gap-3 bg-emerald-50 px-4 py-3">
         <div class="min-w-0">
           <div class="text-sm font-semibold text-emerald-800">✓ ${esc(currentStep().label)} ready · ${r.words.toLocaleString()} words</div>
+          ${projectLine}${extractLine}
           <div class="flex flex-wrap items-center gap-x-1 text-xs text-emerald-700"><span class="inline-flex items-center">${who}</span> ${esc(m.model)} · ${esc(m.effort)} · ${fmtTime(m.duration_s)}${usage} · saved to <code>output/${esc(r.file.step)}/${esc(r.file.name)}</code></div>
         </div>
-        <div class="flex gap-2">
+        <div class="flex flex-wrap gap-2">
+          ${r.response ? `<div class="inline-flex rounded-lg bg-paper p-1 ring-1 ring-emerald-200">
+            <button type="button" data-show-full="0" class="rounded-md px-3 py-1 text-xs font-semibold transition ${full ? 'text-emerald-700 hover:text-ink' : 'bg-emerald-100 text-emerald-900'}">Result</button>
+            <button type="button" data-show-full="1" class="rounded-md px-3 py-1 text-xs font-semibold transition ${full ? 'bg-emerald-100 text-emerald-900' : 'text-emerald-700 hover:text-ink'}">Full response</button>
+          </div>` : ''}
           <button type="button" id="copy-result" class="rounded-lg border border-emerald-200 bg-paper px-3 py-2 text-xs font-semibold text-emerald-800 transition">Copy</button>
-          <a href="${esc(r.file.url)}" download class="inline-flex items-center gap-1 rounded-lg bg-accent px-4 py-2 text-xs font-semibold text-white transition hover:bg-accent-dark">Download .txt ↓</a>
+          <a href="${esc(full ? r.file.response_url : r.file.url)}" download class="inline-flex items-center gap-1 rounded-lg bg-accent px-4 py-2 text-xs font-semibold text-white transition hover:bg-accent-dark">Download .txt ↓</a>
         </div>
       </div>
-      <pre class="max-h-[28rem] overflow-auto whitespace-pre-wrap break-words bg-paper px-4 py-3 font-sans text-sm leading-7 text-ink">${esc(r.text)}</pre>`;
+      ${warn}
+      <pre class="max-h-[28rem] overflow-auto whitespace-pre-wrap break-words bg-paper px-4 py-3 font-sans text-sm leading-7 text-ink">${esc(shown)}</pre>`;
     $('copy-result').addEventListener('click', async (e) => {
-      try { await navigator.clipboard.writeText(r.text); e.target.textContent = 'Copied ✓'; } catch { e.target.textContent = 'Copy failed'; }
+      try { await navigator.clipboard.writeText(shown); e.target.textContent = 'Copied ✓'; } catch { e.target.textContent = 'Copy failed'; }
     });
   }
 
-  async function runStep() {
+  // Later steps of this flow that take a step's result as an input ("Script", "Audits").
+  function nextUsers(stepName) {
+    const steps = state.brand.branches[state.bi].steps;
+    return steps.slice(state.si + 1)
+      .filter((s) => s.fields.some((f) => f.kind === 'generated' && f.source === stepName))
+      .map((s) => s.label);
+  }
+
+  // A step's result becomes the input of the later steps that use it, unless the person
+  // typed or loaded something else there (a result filled in this way is replaced next time).
+  // ---------- rules after a step ('> audits LOOP { STRICT_VALIDATION; ... }')
+  const liveJob = (j) => j && (j.status === 'queued' || j.status === 'running');
+  // The rules running in the project the next run would continue, if any.
+  function runningJob() {
+    const p = knownProject();
+    return p ? Object.values(state.jobs).find((j) => liveJob(j) && j.project_id === p.id) : null;
+  }
+  const spin = '<svg class="h-3.5 w-3.5 animate-spin" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" opacity=".25"/><path d="M22 12a10 10 0 0 0-10-10" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg>';
+
+  async function pollRules(key) {
+    const j = state.jobs[key];
+    if (!j || j.polling) return;
+    j.polling = true;
+    while (state.jobs[key] === j && liveJob(j)) {
+      await new Promise((r) => setTimeout(r, 2500));
+      try {
+        const res = await fetch(`/api/scripting/rules/${encodeURIComponent(j.id)}`);
+        const data = await res.json();
+        if (res.status === 404) Object.assign(j, { status: 'failed', error: data.detail });
+        else if (res.ok) Object.assign(j, data);
+      } catch { /* the server may be busy: try again */ }
+      if (resultKey() === key) renderRules();
+      refresh();
+    }
+    j.polling = false;
+    if (state.jobs[key] !== j) return;
+    if (j.final) {  // the final script feeds the later steps, like a step result
+      fillLaterSteps(j.flow, j.step, { text: j.final.text, file: j.final.file });
+      if (j.final.project) state.project = j.final.project;
+    }
+    if (resultKey() === key) renderRules();
+    refresh();
+  }
+
+  async function rerunRules() {
+    const key = resultKey();
+    const old = state.jobs[key];
+    if (!old || liveJob(old)) return;
+    let res, data = null;
+    try {
+      res = await fetch('/api/scripting/rules', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ brand: state.brand.key, branch: state.bi, step: currentStep().name, project_id: old.project_id,
+                               effort: providerByKey[old.provider] ? effortOverride(currentStep().name, old.provider) : null }),
+      });
+      data = await res.json();
+    } catch { /* handled below */ }
+    if (!res || !res.ok) {
+      const d = data && data.detail;
+      old.error = (typeof d === 'string' ? d : d && d.message) || 'Couldn’t start the rules again.';
+      renderRules();
+      return;
+    }
+    state.jobs[key] = { ...data, flow: old.flow, key };
+    renderRules();
+    refresh();
+    pollRules(key);
+  }
+
+  function renderRules() {
+    const box = $('rules-result');
+    const j = state.brand && state.jobs[resultKey()];
+    if (!j) { box.className = 'mt-4 hidden'; box.innerHTML = ''; return; }
+    const live = liveJob(j);
+    const tagBadge = (tag, ok) => !tag ? '<span class="text-amber-700">no status found</span>'
+      : `<span class="rounded-full px-2 py-0.5 text-[11px] font-semibold ${ok ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}">${esc(tag)}</span>`;
+    const rows = (j.log || []).map((e) => {
+      const what = e.kind === 'check' ? 'check' : 'revision';
+      const pass = e.iteration ? ` · pass ${e.iteration}` : '';
+      let result = '';
+      if (e.status === 'running') result = `<span class="inline-flex items-center gap-1 text-muted">${spin} running…</span>`;
+      else if (e.status === 'failed') result = '<span class="font-semibold text-accent">failed</span>';
+      else if (e.kind === 'check') result = `${tagBadge(e.tag, e.passed)}${e.rating != null ? ` <span class="text-muted">· rating ${esc(e.rating)}</span>` : ''}`;
+      else result = `<span class="text-emerald-700">new script · ${Number(e.words || 0).toLocaleString()} words</span>`;
+      return `<li class="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5 text-sm">
+          <span class="min-w-0"><span class="font-semibold text-ink">${e.n}. ${esc(e.name)}</span> <span class="text-xs text-faint">${what}${pass}${e.duration_s != null ? ' · ' + fmtTime(e.duration_s) : ''}</span>
+            ${e.warning ? `<span class="block text-xs text-amber-700">⚠ ${esc(e.warning)}</span>` : ''}</span>
+          <span class="flex items-center gap-2 text-xs">${result}</span>
+        </li>`;
+    }).join('');
+    const waiting = live && !(j.log || []).some((e) => e.status === 'running')
+      ? `<li class="flex items-center gap-2 px-4 py-2.5 text-sm text-muted">${spin} ${(j.log || []).length ? 'Deciding what runs next…' : 'Starting the rules…'}</li>` : '';
+    const head = live ? `<span class="inline-flex items-center gap-2">${spin} Running the rules after ${esc(j.step_label)}…</span>`
+      : j.status === 'failed' ? `The rules after ${esc(j.step_label)} stopped`
+      : j.ready ? `✓ Rules finished · ${esc(j.tag)}`
+      : `Rules finished${j.tag ? ' · ' + esc(j.tag) : ''}`;
+    const tone = live ? 'border-line' : j.status === 'failed' ? 'border-accent/40' : j.ready ? 'border-emerald-200' : 'border-amber-200';
+    const warns = [...(j.warnings || []), ...(j.error ? [j.error] : [])]
+      .map((w) => `<div class="border-t border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-800">⚠ ${esc(w)}</div>`).join('');
+    const f = j.final;
+    const final = f ? `
+      <div class="border-t border-line">
+        <div class="flex flex-wrap items-center justify-between gap-3 bg-emerald-50 px-4 py-3">
+          <div class="min-w-0 text-xs text-emerald-700">
+            <div class="text-sm font-semibold text-emerald-800">Final ${esc(j.step_label.toLowerCase())} script · ${f.words.toLocaleString()} words</div>
+            ${f.changed ? 'Revised by the rules' : `The ${esc(j.step_label)} result, unchanged`} · saved to <code>output/${esc(f.file.step)}/${esc(f.file.name)}</code>
+          </div>
+          <div class="flex gap-2">
+            <button type="button" data-action="copy-final" class="rounded-lg border border-emerald-200 bg-paper px-3 py-2 text-xs font-semibold text-emerald-800 transition">Copy</button>
+            <a href="${esc(f.file.url)}" download class="inline-flex items-center gap-1 rounded-lg bg-accent px-4 py-2 text-xs font-semibold text-white transition hover:bg-accent-dark">Download .txt ↓</a>
+          </div>
+        </div>
+        <pre class="max-h-[28rem] overflow-auto whitespace-pre-wrap break-words bg-paper px-4 py-3 font-sans text-sm leading-7 text-ink">${esc(f.text)}</pre>
+      </div>` : '';
+    const again = live ? '' : `<button type="button" data-action="rerun-rules" class="rounded-lg border border-line bg-paper px-3 py-1.5 text-xs font-semibold text-ink transition hover:border-[#cfccc3] hover:text-accent">Run the rules again</button>`;
+    box.className = `mt-4 fade-in overflow-hidden rounded-lg border ${tone}`;
+    box.innerHTML = `
+      <div class="flex flex-wrap items-center justify-between gap-3 bg-card px-4 py-3">
+        <div class="min-w-0">
+          <div class="text-sm font-semibold text-ink">${head}</div>
+          <div class="text-xs text-muted">Project “${esc(j.project_name)}” · same conversation · ${j.runs || 0} rule prompt${j.runs === 1 ? '' : 's'} run${j.elapsed_s ? ' · ' + fmtTime(j.elapsed_s) : ''}</div>
+        </div>
+        ${again}
+      </div>
+      <ol class="divide-y divide-line border-t border-line">${rows}${waiting}</ol>
+      ${warns}${final}`;
+  }
+
+  function fillLaterSteps(flow, stepName, data) {
+    const names = new Set();
+    flow.forEach((s) => s.fields.forEach((f) => {
+      if (f.kind === 'generated' && f.source === stepName) names.add(f.name);
+    }));
+    names.forEach((name) => {
+      const prev = state.files[name];
+      const untouched = prev && prev.auto && state.values[name] === prev.text;
+      if (filled(name) && !untouched) return;
+      state.files[name] = { name: data.file.name, text: data.text, saved: data.file.name, auto: stepName };
+      state.values[name] = data.text;
+    });
+  }
+
+  // projectId: continue exactly this project (picked from the list of same-named ones).
+  async function runStep(projectId = null) {
+    if (state.running) return;
     const s = currentStep();
+    const flow = state.brand.branches[state.bi].steps;
     const key = resultKey();
     const inputs = Object.fromEntries(s.fields.filter((f) => filled(f.name)).map((f) => [f.name, state.values[f.name]]));
+    const known = knownProject();
+    const project = {
+      new_project: state.newProject,
+      project_name: projectName(),
+      project_id: state.newProject ? null : (projectId || (known && known.id) || null),
+    };
     const started = Date.now();
     state.running = key;
     $('run').disabled = true;
@@ -514,19 +894,29 @@
     try {
       const res = await fetch('/api/scripting/run', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ brand: state.brand.key, branch: state.bi, step: s.name, language: state.lang, inputs, provider: state.provider }),
+        body: JSON.stringify({ brand: state.brand.key, branch: state.bi, step: s.name, language: state.lang, inputs, provider: state.provider, ...project, run_rules: state.runRules, effort: effortOverride(s.name) }),
       });
       let data = null;
       try { data = await res.json(); } catch { /* not JSON */ }
-      if (!res.ok) throw new Error((data && (typeof data.detail === 'string' ? data.detail : JSON.stringify(data.detail))) || `Request failed (${res.status})`);
+      if (!res.ok) {
+        // detail is a string, or {code, message, ...} for project errors the page can act on
+        const d = data && data.detail;
+        const err = new Error((typeof d === 'string' ? d : d && d.message ? d.message : d && JSON.stringify(d)) || `Request failed (${res.status})`);
+        if (d && typeof d === 'object' && !Array.isArray(d) && d.code) err.detail = d;
+        throw err;
+      }
       state.results[key] = data;
+      if (data.project) state.project = data.project;  // the next steps continue this one
+      fillLaterSteps(flow, s.name, data);
+      delete state.jobs[key];
+      if (data.rules) { state.jobs[key] = { ...data.rules, flow, key }; pollRules(key); }
     } catch (err) {
-      state.results[key] = { error: err.message === 'Failed to fetch' ? 'Lost connection to the server.' : err.message };
+      state.results[key] = { error: err.message === 'Failed to fetch' ? 'Lost connection to the server.' : err.message, detail: err.detail || null };
     } finally {
       clearInterval(timer);
       state.running = null;
       $('run').textContent = `Run ${currentStep().label} →`;
-      if (resultKey() === key) renderResult();
+      if (resultKey() === key) { renderResult(); renderRules(); }
       refresh();
       if (state.results[key] && !state.results[key].error) $('status').textContent = `Done in ${fmtTime((Date.now() - started) / 1000)}.`;
     }
@@ -574,6 +964,25 @@
 
   // ---------- events
   document.addEventListener('click', (e) => {
+    if (e.target.closest('#new-project')) { setNewProject(!state.newProject); return; }
+    if (e.target.closest('#run-rules')) { state.runRules = !state.runRules; $('run-rules').setAttribute('aria-checked', String(state.runRules)); return; }
+    const cont = e.target.closest('[data-continue]');
+    if (cont) { setNewProject(false); runStep(cont.dataset.continue); return; }
+    const act = e.target.closest('[data-action]');
+    if (act) {
+      if (act.dataset.action === 'rerun-rules') { rerunRules(); return; }
+      if (act.dataset.action === 'copy-final') {
+        const j = state.jobs[resultKey()];
+        navigator.clipboard.writeText(j.final.text).then(() => { act.textContent = 'Copied ✓'; }, () => { act.textContent = 'Copy failed'; });
+        return;
+      }
+      if (act.dataset.action === 'new-project') { setNewProject(true); $('project-name').focus(); }
+      else if (act.dataset.action === 'first-step') chooseStep(state.bi, 0);
+      else if (act.dataset.action === 'switch-provider') chooseProvider(act.dataset.provider);
+      return;
+    }
+    const sf = e.target.closest('[data-show-full]');
+    if (sf) { const r = state.results[resultKey()]; if (r) { r.showFull = sf.dataset.showFull === '1'; renderResult(); } return; }
     const mb = e.target.closest('.mode-btn');
     if (mb) { setMode(mb.dataset.for, mb.dataset.mode); return; }
     const po = e.target.closest('.provider-opt');
@@ -598,6 +1007,7 @@
     if (so) { const [bi, si] = so.dataset.step.split(':').map(Number); chooseStep(bi, si); closeAll(); }
   });
   document.addEventListener('input', (e) => {
+    if (e.target.id === 'project-name') { state.projectName = e.target.value; refresh(); return; }
     const name = e.target.dataset && e.target.dataset.field;
     if (!name || !state.brand) return;
     state.values[name] = e.target.value;
@@ -605,7 +1015,7 @@
     refresh();
   });
   $('next').addEventListener('click', () => chooseStep(state.bi, state.si + 1));
-  $('run').addEventListener('click', runStep);
+  $('run').addEventListener('click', () => runStep());
 </script>
 {% endif %}
 {% endblock %}

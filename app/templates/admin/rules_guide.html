@@ -1,0 +1,144 @@
+{% extends "site.html" %}
+{% from "_page.html" import page_header %}
+{% block title %}Rules guide — Admin{% endblock %}
+
+{# Every key and example on this page comes from app/keys.py, so the page stays true. #}
+{% set seg_cls = {'kw': 'font-semibold text-accent', 'name': 'font-semibold text-ink', 'var': 'text-sky-700',
+                  'str': 'text-emerald-700', 'num': 'text-amber-700', '': 'text-ink'} %}
+
+{% macro rule_lines(ex, notes=true) %}
+<div class="overflow-hidden rounded-lg border border-line bg-card">
+  {% if notes %}
+  <div class="hidden gap-x-6 border-b border-line px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-faint sm:grid sm:grid-cols-[minmax(0,26rem)_minmax(0,1fr)]">
+    <span>Rule</span><span>What it does</span>
+  </div>
+  {% endif %}
+  <div class="py-2">
+    {% if ex.guidance %}
+    <div class="px-4 py-0.5 font-mono text-[12.5px] leading-6 text-muted">{{ ex.guidance }} <span class="text-faint"># guidance: added to every step prompt</span></div>
+    {% endif %}
+    {% for l in ex.lines %}
+    <div class="grid gap-x-6 px-4 py-0.5 {% if notes %}sm:grid-cols-[minmax(0,26rem)_minmax(0,1fr)]{% endif %}">
+      <code class="block whitespace-pre-wrap break-words font-mono text-[12.5px] leading-6" style="padding-left: {{ l.indent * 1.75 }}rem">{% for kind, text in l.segments %}<span class="{{ seg_cls[kind] }}">{{ text }}</span>{% endfor %}</code>
+      {% if notes %}<span class="pb-1 text-xs leading-6 text-muted sm:pb-0">{% if l.note %}<span class="text-faint"># </span>{{ l.note }}{% endif %}</span>{% endif %}
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endmacro %}
+
+{% macro key_table(title, rows, head="Key") %}
+<div class="overflow-hidden rounded-lg border border-line">
+  <div class="border-b border-line bg-card px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-faint">{{ title }}</div>
+  <dl class="divide-y divide-line">
+    {% for key, about in rows %}
+    <div class="grid gap-x-6 gap-y-1 px-4 py-2.5 sm:grid-cols-[14rem_minmax(0,1fr)]">
+      <dt><code class="whitespace-pre-wrap break-words font-mono text-[12.5px] font-semibold text-accent">{{ key }}</code></dt>
+      <dd class="text-sm text-muted">{{ about }}</dd>
+    </div>
+    {% endfor %}
+  </dl>
+</div>
+{% endmacro %}
+
+{% block content %}
+  {{ page_header("03", "Admin / Rules guide", "Rules", "guide.",
+                 "How to add Rules to a brand in the TSV: the keys you can use and how they run.",
+                 icon="admin", aside="API key protected") }}
+  {% include "admin/_tabs.html" %}
+  <div class="mx-auto max-w-5xl px-6 py-10 sm:px-10">
+
+  <!-- How it works -->
+  <h2 class="text-lg font-semibold text-ink">How it works</h2>
+  <ol class="mt-4 grid gap-3 sm:grid-cols-2">
+    {% for title, text in [
+      ("Declare prompts", "In the Rule Prompts column, give each prompt a name: NAME = \"\"\" ... \"\"\"."),
+      ("Hook them to a step", "In the Rules column, > audits means: after the Audits step, run what follows."),
+      ("Checks and fixes", "A prompt with a status line (STATUS - … or Title Satisfied: …) is a check: it sets TAG and RATING and keeps the script. Any other prompt is a fix: its code block becomes the new script."),
+      ("The result", "When the rules end, the latest script is the step's final result and is used by the next step."),
+    ] %}
+    <li class="rounded-lg border border-line bg-paper p-4">
+      <div class="text-sm font-semibold text-ink"><span class="text-accent">{{ loop.index }}.</span> {{ title }}</div>
+      <p class="mt-1 text-sm leading-6 text-muted">{{ text }}</p>
+    </li>
+    {% endfor %}
+  </ol>
+  <p class="mt-3 text-xs text-faint">All rule prompts run in the same project conversation, so each one sees the script and the earlier answers.</p>
+
+  <!-- In the TSV -->
+  <h2 class="mt-10 text-lg font-semibold text-ink">In the TSV</h2>
+  <div class="mt-4 grid gap-3 sm:grid-cols-2">
+    <div class="rounded-lg border border-line bg-card p-4">
+      <div class="label text-faint">Rule Prompts column</div>
+      <pre class="mt-2 whitespace-pre-wrap break-words font-mono text-[12.5px] leading-6 text-ink"><span class="font-semibold">STRICT_VALIDATION</span> = """ Check the script …
+Use exactly one of: <span class="text-emerald-700">STATUS - READY FOR PRODUCTION</span>
+or <span class="text-emerald-700">STATUS - NOT READY FOR PRODUCTION</span> """
+
+<span class="font-semibold">APPLY_CHANGES</span> = """ Apply all suggested fixes …
+Narration: <span class="text-sky-700">{{ '{{' }} words_range {{ '}}' }}</span> words.
+Output the script in a code block. """</pre>
+    </div>
+    <div class="rounded-lg border border-line bg-card p-4">
+      <div class="label text-faint">Rules column</div>
+      <pre class="mt-2 whitespace-pre-wrap break-words font-mono text-[12.5px] leading-6 text-ink"><span class="font-semibold text-accent">&gt;</span> audits
+<span class="font-semibold text-accent">LOOP</span> (<span class="font-semibold text-accent">MAX</span> <span class="text-amber-700">5</span>) {
+    <span class="font-semibold">STRICT_VALIDATION</span>;
+    <span class="font-semibold text-accent">IF</span> (<span class="text-sky-700">TAG</span> == <span class="text-emerald-700">"READY FOR PRODUCTION"</span>) { <span class="font-semibold text-accent">BREAK</span>; }
+    <span class="font-semibold">APPLY_CHANGES</span>;
+}</pre>
+      <p class="mt-2 text-xs text-faint">One line or many: line breaks and spaces don't matter.</p>
+    </div>
+  </div>
+
+  <!-- Annotated -->
+  <h2 class="mt-10 text-lg font-semibold text-ink">A full rule, line by line</h2>
+  <p class="mt-1 text-sm text-muted">{{ featured.about }}</p>
+  <div class="mt-4">{{ rule_lines(featured) }}</div>
+
+  <!-- Keys -->
+  <h2 class="mt-10 text-lg font-semibold text-ink">Keys</h2>
+  <div class="mt-4 grid gap-4">
+    {{ key_table("Statements", [(keys.HOOK ~ " step", "Run the statements that follow after that step (until the next " ~ keys.HOOK ~ ").")] + statements) }}
+    {{ key_table("Conditions: inside ( )", keys.RULE_OPERATORS.items() | list
+                 + [('"text"', "Text in double quotes. Case and extra spaces don't matter."),
+                    ("( … )", "Group conditions, e.g. (TAG == \"READY\" AND RATING >= 9) OR RUNS > 10")]) }}
+    {{ key_table("Variables", keys.RULE_VARIABLES.items() | list) }}
+    {{ key_table("Status lines: in a check prompt and its answer", [
+         ("STATUS - READY FOR PRODUCTION", "TAG = \"READY FOR PRODUCTION\""),
+         ("STATUS - NOT READY FOR PRODUCTION", "TAG = \"NOT READY FOR PRODUCTION\""),
+         ("Title Satisfied: True", "TAG = \"TRUE\" (Title Satisfied: False gives \"FALSE\")"),
+         ("Overall rating: 8.5/10", "RATING = 8.5"),
+       ]) }}
+    {% set values = [] %}
+    {% for name, about in keys.BUILTIN_PLACEHOLDERS.items() %}{% set _ = values.append(('{' ~ '{ ' ~ name ~ ' }' ~ '}', about)) %}{% endfor %}
+    {{ key_table("Values for rule prompts", values) }}
+    {{ key_table("Limits", [
+         ("LOOP without MAX", keys.DEFAULT_MAX_LOOP ~ " passes"),
+         ("Largest MAX", keys.HARD_MAX_LOOP ~ " passes (a higher MAX is cut to this)"),
+         ("Prompts per step", keys.MAX_RUNS ~ " rule prompts at most, then the rules stop"),
+       ]) }}
+  </div>
+
+  <!-- Good to know -->
+  <h2 class="mt-10 text-lg font-semibold text-ink">Good to know</h2>
+  <ul class="mt-3 grid gap-2 text-sm leading-6 text-muted">
+    <li>• <b class="text-ink">MAX counts passes.</b> One pass = the check, plus a fix if needed. With <code>LOOP (MAX 5)</code> the 5th fix is never checked; use <code>MAX 6</code> with <code>ELSE IF (ITERATION == 6) { STOP; }</code> to check every fix.</li>
+    <li>• <b class="text-ink">REVALIDATE</b> ends the pass; the next pass starts with the check again.</li>
+    <li>• <b class="text-ink">TAG is compared exactly.</b> If a rule says <code>TAG == "TRUE"</code>, the check prompt must ask for that word in its status line. The upload warns you when no check prompt does.</li>
+    <li>• <b class="text-ink">Every name you run must be declared</b> in Rule Prompts, or the upload stops with an error.</li>
+    <li>• After uploading, the <a href="/admin/scripts/dashboard" class="text-accent hover:underline">Dashboard</a> shows each brand's rules line by line, with a sample run.</li>
+  </ul>
+
+  <!-- Examples -->
+  <h2 class="mt-10 text-lg font-semibold text-ink">More examples</h2>
+  <div class="mt-4 grid gap-5">
+    {% for ex in examples %}
+    <div>
+      <p class="mb-2 text-sm text-muted">{{ ex.about }}</p>
+      {{ rule_lines(ex, notes=false) }}
+    </div>
+    {% endfor %}
+  </div>
+
+  </div>
+{% endblock %}

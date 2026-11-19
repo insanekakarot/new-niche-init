@@ -16,8 +16,10 @@ class Settings(BaseSettings):
     # Where uploaded inputs are kept: <admin_dir>/inputs/tsv/__script_prompts.tsv
     admin_dir: Path = APP_DIR / "admin"
     # Where the processed config is written: <scripts_config_dir>/__scripts.prompt.json
-    # Z:\new-niche-overall\admin\configs\_scripts  ==  /mnt/z/... inside WSL
-    scripts_config_dir: Path = Path("/mnt/z/new-niche-overall/admin/configs/_scripts")
+    # Set SCRIPTS_CONFIG_DIR to share it (e.g. a network drive); the default stays in the app.
+    scripts_config_dir: Path = APP_DIR / "admin" / "configs" / "_scripts"
+    # Brand slug -> Google Drive folder URL. Private: kept out of git (see brand_links.example.json).
+    brand_links_file: Path = APP_DIR / "brand_links.json"
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

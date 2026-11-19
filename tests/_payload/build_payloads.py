@@ -52,7 +52,8 @@ def main() -> None:
              f"Admin config last changed: {config_mtime.astimezone():%Y-%m-%d %H:%M}.", "",
              "Each file shows the full command line, the system prompt and the exact STDIN text.", ""]
 
-    for step_dir in sorted(p for p in root.iterdir() if p.is_dir()):
+    # Step folders only (not _projects/).
+    for step_dir in sorted(p for p in root.iterdir() if p.is_dir() and p.name in sc.STEP_COLUMNS):
         target = HERE / step_dir.name
         if target.exists():
             shutil.rmtree(target)
@@ -78,7 +79,7 @@ def main() -> None:
 
             if recorded.is_file():
                 shutil.copyfile(recorded, dest)
-                how = "recorded at run time"
+                how = "recorded at run time" + (" (resumed project chat)" if meta.get("resumed") else "")
             else:
                 created = datetime.fromisoformat(meta["created_at"])
                 exact = config_mtime <= created

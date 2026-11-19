@@ -1,8 +1,9 @@
 """Step results on disk: <output_dir>/<step>/<brand>__<title>__<timestamp>.txt
 
-Each .txt holds only Claude's response. A .json file with the same name records the run
-(brand, language, model, cost, the inputs used) so the result can be found and reused
-by the next step.
+Each .txt holds the step's result: the response, or for a prompt that asks for a code block,
+only what's inside it (app/web/extract.py). The whole response is then kept next to it as
+<name>.response.txt. A .json file with the same name records the run (brand, language, model,
+cost, the inputs used) so the result can be found and reused by the next step.
 """
 
 from __future__ import annotations
@@ -22,12 +23,14 @@ def output_dir() -> Path:
     return get_cli_settings().output_dir
 
 
-def _slug(text: str, limit: int = 60) -> str:
-    slug = re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")
-    return slug[:limit].rstrip("-") or "untitled"
+def slug(text: str, limit: int = 60) -> str:
+    out = re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")
+    return out[:limit].rstrip("-") or "untitled"
 
 
 PAYLOAD_SUFFIX = ".payload.txt"
+RESPONSE_SUFFIX = ".response.txt"
+_SIDECARS = (PAYLOAD_SUFFIX, RESPONSE_SUFFIX)
 _RULE = "=" * 22
 
 
@@ -62,18 +65,26 @@ def payload_path(output: Path) -> Path:
     return output.with_name(output.name[: -len(".txt")] + PAYLOAD_SUFFIX)
 
 
+def response_path(output: Path) -> Path:
+    """app/output/<step>/<name>.txt -> app/output/<step>/<name>.response.txt"""
+    return output.with_name(output.name[: -len(".txt")] + RESPONSE_SUFFIX)
+
+
 def save_output(*, step: str, brand_key: str, title: str, text: str, meta: dict,
-                payload: dict | None = None) -> Path:
+                payload: dict | None = None, response: str | None = None) -> Path:
+    """Save a step's result. `response`: the whole response, when `text` is only part of it."""
     folder = output_dir() / step
     folder.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now(timezone.utc).astimezone().strftime("%Y%m%d-%H%M%S")
-    base = f"{brand_key}__{_slug(title)}__{stamp}"
+    base = f"{brand_key}__{slug(title)}__{stamp}"
     path = folder / f"{base}.txt"
     n = 2
     while path.exists():
         path = folder / f"{base}-{n}.txt"
         n += 1
     path.write_text(text.rstrip() + "\n", encoding="utf-8")
+    if response is not None:
+        response_path(path).write_text(response.rstrip() + "\n", encoding="utf-8")
     path.with_suffix(".json").write_text(
         json.dumps(meta, ensure_ascii=False, indent=2, default=str) + "\n", encoding="utf-8"
     )
@@ -84,16 +95,43 @@ def save_output(*, step: str, brand_key: str, title: str, text: str, meta: dict,
     return path
 
 
-def resolve(step: str, name: str) -> Path | None:
-    """The file for a download request, or None. Blocks path tricks like '../'."""
-    if step not in STEP_COLUMNS or not _SAFE_NAME.match(name) or name.endswith(PAYLOAD_SUFFIX):
+def resolve(step: str, name: str, full: bool = False) -> Path | None:
+    """The file for a download request, or None. Blocks path tricks like '../'.
+
+    `full`: the whole response saved next to a code-block result, if there is one.
+    """
+    if step not in STEP_COLUMNS or not _SAFE_NAME.match(name) or name.endswith(_SIDECARS):
         return None
     path = output_dir() / step / name
+    if full:
+        path = response_path(path)
     return path if path.is_file() else None
 
 
-def download_url(step: str, name: str) -> str:
-    return f"/api/scripting/outputs/{step}/{name}"
+def read_output(step: str, name: str) -> str | None:
+    """A saved result's text (without the newline added on save), or None."""
+    path = resolve(step, name)
+    if path is None:
+        return None
+    try:
+        return path.read_text(encoding="utf-8").rstrip("\n")
+    except (OSError, UnicodeDecodeError):
+        return None
+
+
+def read_meta(step: str, name: str) -> dict:
+    path = resolve(step, name)
+    if path is None:
+        return {}
+    try:
+        meta = json.loads(path.with_suffix(".json").read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return meta if isinstance(meta, dict) else {}
+
+
+def download_url(step: str, name: str, full: bool = False) -> str:
+    return f"/api/scripting/outputs/{step}/{name}" + ("?full=true" if full else "")
 
 
 def _provider_from_model(model: str) -> str:
@@ -121,6 +159,8 @@ def describe(path: Path) -> dict:
         "title": meta.get("video_title") or "",
         "language": meta.get("language") or "",
         "words": meta.get("words"),
+        "project": meta.get("project_name") or "",
+        "extracted": bool(meta.get("extracted")),
         "provider": meta.get("provider") or _provider_from_model(meta.get("model") or ""),
         "created_at": meta.get("created_at")
         or datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc).isoformat(),
@@ -135,6 +175,6 @@ def list_outputs(step: str, brand: str | None = None, limit: int = 50) -> list[d
     if not folder.is_dir():
         return []
     pattern = f"{brand}__*.txt" if brand else "*.txt"
-    files = sorted((p for p in folder.glob(pattern) if not p.name.endswith(PAYLOAD_SUFFIX)),
+    files = sorted((p for p in folder.glob(pattern) if not p.name.endswith(_SIDECARS)),
                    key=lambda p: p.stat().st_mtime, reverse=True)
     return [describe(p) for p in files[:limit]]

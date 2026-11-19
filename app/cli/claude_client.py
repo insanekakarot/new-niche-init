@@ -2,6 +2,10 @@
 
 The prompt goes in on stdin (it can be far longer than a command line allows) and the
 response comes back as the CLI's single-result JSON (`--output-format json`).
+
+`resume=<session id>` continues an earlier conversation (`--resume`), so the model keeps
+the full context of the previous steps. Claude finds sessions by working folder, so every
+run uses the same one (CLI_OUTPUT_DIR).
 """
 
 from __future__ import annotations
@@ -13,10 +17,14 @@ from app.cli.common import CliError, CliResult, run_process, run_slot, tail
 from app.cli.config import CLAUDE_EFFORTS, ClaudeCliSettings, get_claude_settings, get_cli_settings
 
 
-def build_command(s: ClaudeCliSettings) -> list[str]:
+def build_command(s: ClaudeCliSettings, resume: str | None = None,
+                  keep_session: bool = False) -> list[str]:
+    """`resume` continues that session; `keep_session` saves the session so it can be resumed."""
     cmd = [*shlex.split(s.bin), "-p", "--output-format", "json",
            "--model", s.model, "--effort", s.effort,
            "--system-prompt", s.system_prompt]
+    if resume:
+        cmd += ["--resume", resume]
     tools = [t.strip() for t in s.tools.split(",") if t.strip()]
     cmd += ["--tools", ",".join(tools)]
     if tools:
@@ -27,7 +35,8 @@ def build_command(s: ClaudeCliSettings) -> list[str]:
         cmd += ["--max-budget-usd", str(s.max_budget_usd)]
     if s.safe_mode:
         cmd.append("--safe-mode")
-    if s.no_session_persistence:
+    # A session that is resumed, or will be, has to be saved.
+    if s.no_session_persistence and not (keep_session or resume):
         cmd.append("--no-session-persistence")
     cmd += shlex.split(s.extra_args)
     return cmd
@@ -77,22 +86,29 @@ def with_effort(s: ClaudeCliSettings, effort: str | None) -> ClaudeCliSettings:
 
 
 def build_payload(prompt: str, settings: ClaudeCliSettings | None = None,
-                  effort: str | None = None) -> dict:
+                  effort: str | None = None, resume: str | None = None,
+                  keep_session: bool = False) -> dict:
     """Exactly what run_claude sends: the command line and the text written to stdin."""
     s = with_effort(settings or get_claude_settings(), effort)
-    return {"provider": "claude", "argv": build_command(s), "stdin": prompt,
+    return {"provider": "claude", "argv": build_command(s, resume, keep_session),
+            "stdin": prompt, "resume": resume,
             "system_prompt": s.system_prompt, "system_prompt_via": "--system-prompt argument"}
 
 
 async def run_claude(prompt: str, settings: ClaudeCliSettings | None = None,
-                     effort: str | None = None) -> CliResult:
+                     effort: str | None = None, resume: str | None = None,
+                     keep_session: bool = False) -> CliResult:
     s = with_effort(settings or get_claude_settings(), effort)
     async with run_slot("claude", s.max_concurrent_runs, "Claude"):
+        # Neutral folder with no project files to pick up. It never changes, because
+        # Claude looks resumed sessions up by working folder.
         cwd = get_cli_settings().output_dir
-        cwd.mkdir(parents=True, exist_ok=True)  # neutral folder: no project files to pick up
-        payload = build_payload(prompt, s)
+        cwd.mkdir(parents=True, exist_ok=True)
+        payload = build_payload(prompt, s, resume=resume, keep_session=keep_session)
         stdout, stderr, code, secs = await run_process(
             payload["argv"], payload["stdin"], cwd=cwd, timeout=s.timeout_seconds,
             label="Claude", setting_prefix="CLAUDE_CLI_",
         )
-        return parse_response(stdout, stderr, code, s, secs)
+        result = parse_response(stdout, stderr, code, s, secs)
+        result.session_id = result.session_id or resume
+        return result

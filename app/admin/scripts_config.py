@@ -1,11 +1,15 @@
 """Turn the "Scripting Prompts Config" TSV into the admin JSON config.
 
 TSV columns (one row per brand):
-    Research | Outline | Script | Audits | Paraphrasing | Brand | Steps | Rules | Inputs
+    Research | Outline | Script | Audits | Paraphrasing | Brand | Steps | Rules |
+    Rule Prompts (optional) | Inputs
 
 Output (__scripts.prompt.json) is a list with one object per brand:
     [{"nba_brand_1": {"brand_name": ..., "prompts": {...}, "steps": [...],
-                      "rules": ..., "inputs": {...}}}, ...]
+                      "rules": ..., "rule_prompts": {NAME: prompt}, "inputs": {...}}}, ...]
+
+`rules` is kept as written; it is checked here (app/rules/lang.py) so a mistake shows up on
+upload, not halfway through a run. Every symbol is listed in app/keys.py.
 """
 
 from __future__ import annotations
@@ -20,7 +24,12 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
+from app import keys
 from app.config import settings
+from app.rules import RuleSyntaxError, parse_rule_prompts
+from app.rules import parse as parse_rules
+from app.rules.explain import tag_literals
+from app.rules.prompts import is_check
 
 TSV_FILENAME = "__script_prompts.tsv"
 CONFIG_FILENAME = "__scripts.prompt.json"
@@ -34,13 +43,12 @@ STEP_COLUMNS: dict[str, str] = {
     "paraphrasing": "Paraphrasing",
 }
 REQUIRED_COLUMNS = (*STEP_COLUMNS.values(), "Brand", "Steps", "Rules", "Inputs")
+RULE_PROMPTS_COLUMN = "Rule Prompts"  # optional: older sheets don't have it
 
-_CONDITIONAL = re.compile(
-    r"^\s*if\s*\(\s*(!?)\s*(\w+)\s*\)\s*\{(?P<then>.*?)\}\s*else\s*\{(?P<else>.*?)\}\s*$",
-    re.IGNORECASE | re.DOTALL,
-)
+# Symbols of the Steps and Inputs columns (all in app/keys.py).
+_CONDITIONAL = keys.STEP_CONDITION
 # "outline = a + b script = c + d"  ->  ("outline", "a + b"), ("script", "c + d")
-_INPUT_ASSIGN = re.compile(r"(\w+)\s*=\s*(.*?)(?=\s+\w+\s*=|\s*$)", re.DOTALL)
+_INPUT_ASSIGN = keys.INPUT_ASSIGN
 
 
 class TsvError(ValueError):
@@ -120,6 +128,46 @@ def parse_inputs(text: str) -> dict[str, list[str]]:
     return inputs
 
 
+def _check_rules(name: str, cells: dict, used: set[str], inputs: dict[str, list[str]],
+                 warnings: list[str]) -> dict[str, str]:
+    """Read Rule Prompts and check the Rules program against it. Returns {NAME: prompt}."""
+    try:
+        rule_prompts, notes = parse_rule_prompts(cells.get(RULE_PROMPTS_COLUMN, ""))
+    except RuleSyntaxError as exc:
+        raise TsvError(f"{name}: Rule Prompts: {exc}") from exc
+    warnings += [f"{name}: {n}" for n in notes]
+    try:
+        program = parse_rules(cells["Rules"], STEP_COLUMNS)
+    except RuleSyntaxError as exc:
+        raise TsvError(f"{name}: Rules: {exc} (The symbols are listed in app/keys.py.)") from exc
+
+    missing = sorted(program.prompt_names() - set(rule_prompts))
+    if missing:
+        raise TsvError(f"{name}: Rules run {', '.join(missing)}, but Rule Prompts doesn't "
+                       f'declare {"it" if len(missing) == 1 else "them"} (NAME = """...""").')
+    for step in program.hooks:
+        if step not in used:
+            warnings.append(f"{name}: Rules run after '{step}', but that step never runs.")
+    for unused in sorted(set(rule_prompts) - program.prompt_names()):
+        warnings.append(f"{name}: rule prompt {unused} is declared but the Rules never run it.")
+    checks = " ".join(" ".join(t.upper().split()) for t in rule_prompts.values() if is_check(t))
+    stmts = [s for hook in program.hooks.values() for s in hook]
+    for tag in tag_literals(stmts):
+        if not re.search(rf"\b{re.escape(tag)}\b", checks):
+            warnings.append(
+                f'{name}: Rules compare TAG with "{tag}", but no check prompt asks for that '
+                f"status, so it can never match. A check prompt needs a status line such as "
+                f'"STATUS - {tag}".')
+    known = set(keys.BUILTIN_PLACEHOLDERS) | set(keys.ALIASES)
+    known |= {i.split("(")[0].strip() for items in inputs.values() for i in items}
+    for rule, text in rule_prompts.items():
+        for ph in dict.fromkeys(keys.PLACEHOLDER.findall(text)):
+            if ph not in known:
+                warnings.append(f"{name}: rule prompt {rule} uses {{{{{ph}}}}}, which isn't an "
+                                "input or a built-in value; it is sent as written.")
+    return rule_prompts
+
+
 def parse_tsv(data: bytes | str) -> ParseResult:
     if isinstance(data, bytes):
         try:
@@ -173,12 +221,14 @@ def parse_tsv(data: bytes | str) -> ParseResult:
             if step not in STEP_COLUMNS:
                 warnings.append(f"{name}: inputs given for unknown step '{step}'.")
 
+        rule_prompts = _check_rules(name, cells, used, inputs, warnings)
         config.append({
             key: {
                 "brand_name": name,
                 "prompts": prompts,
                 "steps": steps,
                 "rules": cells["Rules"] or None,
+                "rule_prompts": rule_prompts,
                 "inputs": inputs,
             }
         })

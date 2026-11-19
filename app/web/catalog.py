@@ -1,6 +1,9 @@
 """Static catalog of tools and scripting brand profiles (source: PLAN.md)."""
 
-from dataclasses import dataclass, field
+import json
+from dataclasses import dataclass, field, replace
+
+from app.config import settings
 
 
 @dataclass(frozen=True)
@@ -33,7 +36,7 @@ class Brand:
     video_length: str
     word_count: str
     production: str
-    drive_url: str
+    drive_url: str = ""  # from app/brand_links.json (private, not in git)
     notes: str = ""
     tags: tuple[str, ...] = field(default_factory=tuple)
 
@@ -91,49 +94,61 @@ BRANDS: tuple[Brand, ...] = (
     Brand(
         "athlete-records", "Athlete Records", "Multi-language",
         ("English", "French", "Russian", "Portuguese", "Spanish", "Czech", "German"),
-        _STD_LEN, _STD_WORDS, _MANUAL,
-        "https://drive.google.com/drive/folders/1ZF-uMydUA0GH8_wDdF8Sn_Um50-ILtX-?usp=drive_link",
+        _STD_LEN, "1,500–1,700 words", _MANUAL,
     ),
     Brand(
         "nba-stories", "NBA Stories, Documentaries & Analysis", "Multi-language",
         _NBA_LANGS, "25–30 min", "3,750–4,500 words", _CLAUDE_GEN,
-        "https://drive.google.com/drive/folders/1YsFnzyqinJWC8xnHEPg7AaB4hzzVwWjk?usp=drive_link",
         notes="NBA brand 1",
     ),
     Brand(
         "nba-games", "NBA Current Games & Performances", "Multi-language",
         _NBA_LANGS, "11–13 min", "1,600–2,000 words", _MANUAL,
-        "https://drive.google.com/drive/folders/1YsFnzyqinJWC8xnHEPg7AaB4hzzVwWjk?usp=drive_link",
         notes="NBA brand 2",
     ),
     Brand(
         "top-10", "TOP 10 Documentary", "Multi-language",
         ("English", "German", "Polish", "French", "Portuguese", "Spanish"),
         "Depends on headings", "2,400–2,700 words", _MANUAL,
-        "https://drive.google.com/drive/folders/1Noq_9Nf_qTIaYp3d9VibeVPDvzGcFaPc?usp=drive_link",
         notes="Word count depends on how many headings the script has.",
     ),
     Brand(
         "zombie-survival", "Zombie Survival", "English only", _EN, _STD_LEN, _STD_WORDS,
         _CLAUDE_ANIM,
-        "https://drive.google.com/drive/folders/1QHw1JweswhEuZwhn9XzZMZXto4OWTD9g?usp=drive_link",
     ),
     Brand(
         "bunker-survival", "Bunker Survival", "English only", _EN, _STD_LEN, _STD_WORDS,
         _CLAUDE_ANIM,
-        "https://drive.google.com/drive/folders/1QHw1JweswhEuZwhn9XzZMZXto4OWTD9g?usp=drive_link",
     ),
     Brand(
         "what-if-1", "What If — Brand 1", "English only", _EN, _STD_LEN, _STD_WORDS,
-        _CLAUDE_ANIM, "https://drive.google.com/drive/folders/1IlggAPuCzMfOQFcnL-ErmNrvCoDeQZ6k",
+        _CLAUDE_ANIM,
     ),
     Brand(
         "what-if-2", "What If — Brand 2", "English only", _EN, _STD_LEN, _STD_WORDS,
-        _CLAUDE_ANIM, "https://drive.google.com/drive/folders/1IlggAPuCzMfOQFcnL-ErmNrvCoDeQZ6k",
+        _CLAUDE_ANIM,
     ),
     Brand(
         "entire-history", "Entire History / Story", "English only", _EN, "20–25 min",
         "3,500–4,000 words", _CLAUDE_GEN,
-        "https://drive.google.com/drive/folders/1sEtz78PqDC7Fiyik8cDrIQpOAlRJeObY?usp=drive_link",
     ),
 )
+
+
+def _with_links(brands: tuple[Brand, ...]) -> tuple[Brand, ...]:
+    """Fill in each brand's Drive folder from the private links file (slug -> URL).
+
+    The links are kept out of git: copy app/brand_links.example.json to the file named by
+    BRAND_LINKS_FILE (default app/brand_links.json) and put the real folder URLs in it.
+    Brands without a link just don't show the "Open brand folder" button.
+    """
+    try:
+        links = json.loads(settings.brand_links_file.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return brands
+    if not isinstance(links, dict):
+        return brands
+    return tuple(replace(b, drive_url=str(links.get(b.slug) or "")) for b in brands)
+
+
+BRANDS = _with_links(BRANDS)

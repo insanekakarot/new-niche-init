@@ -1,7 +1,7 @@
 {# Admin sub-navigation: tabs on a hairline bar, log out on the right. Needs `active`. #}
 <div class="flex items-stretch justify-between border-b border-line px-6 sm:px-10">
   <nav class="-mb-px flex gap-6 text-[14px] font-medium">
-    {% for key, href, label in [("dashboard", "/admin/scripts/dashboard", "Dashboard"), ("edit", "/admin/scripts/prompts/edit", "Upload TSV")] %}
+    {% for key, href, label in [("dashboard", "/admin/scripts/dashboard", "Dashboard"), ("edit", "/admin/scripts/prompts/edit", "Upload TSV"), ("guide", "/admin/scripts/rules-guide", "Rules guide")] %}
     <a href="{{ href }}"
        class="border-b-2 py-3.5 transition {% if active == key %}border-accent text-ink{% else %}border-transparent text-muted hover:text-ink{% endif %}">{{ label }}</a>
     {% endfor %}

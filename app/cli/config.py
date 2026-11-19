@@ -23,10 +23,15 @@ You receive a task prompt written by the channel's editors, plus the inputs for 
 
 - Follow the task prompt exactly. Its instructions on structure, length, tone and format win.
 - Deliver only the finished work, ready to save as a .txt file: no preamble ("Here is..."),
-  no closing remarks, no questions back to the user, no code fences around the answer.
-  Headings and lists are fine when the task calls for them.
+  no closing remarks, no questions back to the user. Headings and lists are fine when the
+  task calls for them.
+- Code blocks: if the task asks for its result inside a Markdown code block (```), follow its
+  code-block rules exactly. The pipeline saves only what's inside that block and passes it to
+  the next step. Otherwise don't wrap the answer in code fences.
 - Placeholders in the task prompt such as [INSERT TITLE], [ATTACH SCRIPT] or [] refer to the
-  inputs provided; use the matching input in their place.
+  inputs provided; use the matching input in their place. Text inside << >> refers to
+  something already in this conversation (an earlier step's input or result): use it from
+  there.
 - Never ask for missing information. Make sensible choices and complete the task.
 - Write everything in the requested output language.
 - Accuracy matters: if web tools are available, use them to check names, dates, scores and
@@ -36,6 +41,8 @@ You receive a task prompt written by the channel's editors, plus the inputs for 
 
 EFFORT_LEVELS: tuple[str, ...] = ("low", "medium", "high", "xhigh", "max", "ultra")
 CLAUDE_EFFORTS: tuple[str, ...] = ("low", "medium", "high", "xhigh", "max")
+# The levels each CLI accepts (the page offers these when that CLI is chosen).
+PROVIDER_EFFORTS: dict[str, tuple[str, ...]] = {"claude": CLAUDE_EFFORTS, "codex": EFFORT_LEVELS}
 DEFAULT_STEP_EFFORTS = "research:high,outline:high,script:medium,audits:high,paraphrasing:high"
 
 
@@ -97,6 +104,8 @@ class ClaudeCliSettings(BaseSettings):
     max_concurrent_runs: int = 2
     # Start the CLI without CLAUDE.md, skills, plugins, hooks or MCP servers.
     safe_mode: bool = True
+    # Don't save one-off sessions. Scripting steps belong to a project and always keep their
+    # session, so the next step can resume the same conversation.
     no_session_persistence: bool = True
     # Replaces Claude Code's coding-agent system prompt for these runs.
     system_prompt: str = DEFAULT_SYSTEM_PROMPT
@@ -119,7 +128,8 @@ class CodexCliSettings(BaseSettings):
     # Skip ~/.codex/config.toml (login still comes from ~/.codex) and execpolicy rules.
     ignore_user_config: bool = True
     ignore_rules: bool = True
-    # Don't save Codex sessions to disk.
+    # Don't save one-off Codex sessions to disk. Project steps always keep theirs so the next
+    # step can resume the same conversation.
     ephemeral: bool = True
     # Codex has no system-prompt flag, so this is placed at the top of every prompt.
     system_prompt: str = DEFAULT_SYSTEM_PROMPT
@@ -155,8 +165,9 @@ def provider_info() -> dict:
         "default": get_cli_settings().default_provider,
         "step_efforts": parse_step_efforts(get_cli_settings().step_efforts),
         "providers": [
-            {"key": "claude", "label": "Claude", "model": claude.model, "effort": claude.effort},
+            {"key": "claude", "label": "Claude", "model": claude.model, "effort": claude.effort,
+             "efforts": list(PROVIDER_EFFORTS["claude"])},
             {"key": "codex", "label": "Codex", "model": codex.model,
-             "effort": codex.reasoning_effort},
+             "effort": codex.reasoning_effort, "efforts": list(PROVIDER_EFFORTS["codex"])},
         ],
     }
