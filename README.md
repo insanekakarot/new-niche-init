@@ -65,6 +65,26 @@ The Qt web engine needs a few system libraries. On Arch:
 (Debian/Ubuntu: `sudo apt install libnss3 libasound2 libxcb-cursor0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-render-util0 libxkbfile1`).
 On WSL, the window opens through WSLg (Windows 11).
 
+### As a Windows app (New Niche.exe)
+
+Double-click **New Niche** on the Desktop. It starts the app inside WSL from this folder (unless
+it's already running), and shows it in a native Windows window that draws with the graphics
+card, so scrolling runs at the monitor's full frame rate. Closing the window stops only a server
+it started itself.
+
+To build or rebuild it (only needed after changing `windows/launcher.py`), in PowerShell:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File \\wsl.localhost\<distro>\home\<user>\new-niche-overall\windows\build.ps1
+```
+
+It installs to `%LOCALAPPDATA%\Programs\New Niche\New Niche.exe`, using its own build venv in
+`%LOCALAPPDATA%\New Niche\build`. The build works out the WSL distro, user and project folder
+from where it runs and saves them in `%LOCALAPPDATA%\New Niche\launcher.json` for the exe; they
+can also be passed as `--distro`, `--user`, `--project`.
+
+### In the browser
+
 - Scripting tool: http://localhost:1023/scripting
 - Admin (upload the prompts TSV): http://localhost:1023/admin
 - Rules guide (keys for the Rules column): http://localhost:1023/admin/scripts/rules-guide
