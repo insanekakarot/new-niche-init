@@ -284,6 +284,16 @@ async def run_step(req: RunRequest, background: BackgroundTasks):
             run_args = {"effort": effort, "resume": resume, "workdir": workdir,
                         "keep_session": True}
             result = await run_cli(provider, prompt, **run_args)
+    except _StepCancelled:
+        if project is None:
+            projects.discard(project_id)
+        else:
+            projects.update_session(project["id"], before.session_id)
+        tag = before.state.tag
+        raise _fail(409, "step_cancelled",
+                    f"The rules before {step['label']} said CANCEL"
+                    + (f" (TAG is “{tag}”)" if tag else "")
+                    + f", so {step['label']} didn't run.", rules=before.public()) from None
     except CliError as exc:
         if project is None:
             projects.discard(project_id)  # a project only exists once its first step worked

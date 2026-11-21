@@ -114,7 +114,7 @@ _TOKEN = re.compile(r"""
   | (?P<string>"[^"]*"|'[^']*')
   | (?P<number>\d+(?:\.\d+)?)
   | (?P<ident>[A-Za-z_]\w*)
-  | (?P<op>==|!=|>=|<=|&&|\|\||[<>=!(){};])
+  | (?P<op>==|!=|>=|<=|&&|\|\||[<>=!(){};,])
 """, re.VERBOSE)
 
 
@@ -275,10 +275,12 @@ class _Parser:
             return loop
         if w == "IF":
             return self.if_()
-        if w in ("BREAK", "STOP") or w in keys.CONTINUE_ALIASES:
+        if w in ("BREAK", "STOP", "CANCEL") or w in keys.CONTINUE_ALIASES:
             self.take()
             self.semicolon()
-            return Break() if w == "BREAK" else Stop() if w == "STOP" else Continue(w)
+            if w in ("STOP", "CANCEL"):
+                return Stop(cancel=w == "CANCEL")
+            return Break() if w == "BREAK" else Continue(w)
         if w == "RUN":
             self.take()
             if self.tok.kind != "ident":

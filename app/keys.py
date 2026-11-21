@@ -119,9 +119,14 @@ RULE_KEYWORDS: dict[str, str] = {
     "CONTINUE;": "Skip the rest of this pass and go to the loop's next check.",
     "REVALIDATE;": "Same as CONTINUE: go back and check again (the loop starts with the check).",
     "STOP;": "End the rules now, keeping the current script.",
+    "CANCEL;": "Before a step ('< step'): end the rules and don't run the step (the page says "
+               "why). After a step it works like STOP.",
+    "step OR step": "In a hook: the same rules after each of these steps, e.g. '> paraphrasing OR audits' "
+                "(a comma works too). '< a OR b' works the same way before steps.",
 }
 KEYWORDS = frozenset({"RUN", "LOOP", "MAX", "UNTIL", "WHILE", "IF", "ELSE", "BREAK",
-                      "CONTINUE", "REVALIDATE", "STOP", "AND", "OR", "NOT", "CONTAINS"})
+                      "CONTINUE", "REVALIDATE", "STOP", "CANCEL", "AND", "OR", "NOT",
+                      "CONTAINS"})
 CONTINUE_ALIASES = frozenset({"CONTINUE", "REVALIDATE"})
 
 # Conditions: comparisons, joined with AND / OR, NOT for the opposite, ( ) to group.
@@ -167,6 +172,17 @@ RULE_EXAMPLES: list[tuple[str, str]] = [
       'TITLE_SATISFACTION; IF (TAG == "TRUE") { BREAK; } ELSE IF (ITERATION == 6) { STOP; } '
       'ELSE { APPLY_CHANGES; REVALIDATE; } } ELSE IF (ITERATION == 6) { STOP; } '
       'ELSE { APPLY_CHANGES; REVALIDATE; } } UNTIL (TAG == "TRUE");')),
+    ("Before the first step: research first; the Outline prompt can use {{ research }}.",
+     "< outline RESEARCH;"),
+    ("Before and after: research before Outline, validate after Audits.",
+     ('< outline RESEARCH; > audits LOOP (MAX 3) { STRICT_VALIDATION; '
+      'IF (TAG == "READY FOR PRODUCTION") { BREAK; } APPLY_CHANGES; }')),
+    (("Check the entries before Paraphrasing: go on, or don't paraphrase; then validate after "
+      "Paraphrasing in one flow and after Audits in the other."),
+     ('< paraphrasing ENTRIES_VALIDATION; IF (TAG == "CONTINUE") { STOP; } '
+      'ELSE IF (TAG == "RESEARCH") { CANCEL; } '
+      '> paraphrasing OR audits LOOP (MAX 6) { STRICT_VALIDATION; '
+      'IF (TAG == "READY FOR PRODUCTION") { BREAK; } APPLY_CHANGES; }')),
     ("Check once; fix only if it isn't ready (no loop).",
      '> audits STRICT_VALIDATION; IF (TAG != "READY FOR PRODUCTION") { APPLY_CHANGES; }'),
     ("Keep fixing while the rating is low (ITERATION in a WHILE check = passes done).",

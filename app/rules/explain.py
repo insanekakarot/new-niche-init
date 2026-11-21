@@ -101,6 +101,9 @@ def lines(program: lang.Program, prompts: dict[str, str]) -> list[dict]:
                 add(indent, f"{s.word};", "go back to the check: end this pass, and the next "
                     "pass starts with the check" if in_loop
                     else "ends the rules (it's outside a loop)")
+            elif isinstance(s, lang.Stop) and s.cancel:
+                add(indent, "CANCEL;", "end the rules and don't run the step (before a step; "
+                    "after one it works like STOP)")
             elif isinstance(s, lang.Stop):
                 add(indent, "STOP;", "end the rules: the current script is the final result")
 

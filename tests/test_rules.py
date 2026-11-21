@@ -675,3 +675,73 @@ def test_rule_prompts_before_a_step_get_the_inputs_and_earlier_results(tmp_path,
     assert "Check these facts: REVISED SCRIPT v1 by RESEARCH for NBA Brand 2." in check
 
 
+# ------------------------------------------------------------ '> a OR b' and CANCEL
+
+def test_or_hook_runs_the_same_rules_after_each_step():
+    program = parse("> paraphrasing OR audits STRICT_VALIDATION; < script, outline RESEARCH;",
+                    STEPS)
+    assert set(program.hooks) == {"paraphrasing", "audits"}
+    assert program.hooks["paraphrasing"] is program.hooks["audits"]
+    assert set(program.before) == {"script", "outline"}
+    with pytest.raises(RuleSyntaxError, match="appears twice"):
+        parse("> audits OR audits CHECK;", STEPS)
+    with pytest.raises(RuleSyntaxError, match="appears twice"):
+        parse("> audits CHECK; > paraphrasing OR audits CHECK;", STEPS)
+
+
+def test_cancel_ends_the_rules_and_marks_them_cancelled():
+    stmts = parse('< paraphrasing CHECK; IF (TAG == "OK") { STOP; } ELSE { CANCEL; } '
+                  "FIX_LENGTH;", STEPS).before["paraphrasing"]
+
+    def answers(tag):
+        async def call(name, entry):
+            return f"```\nSTATUS - {tag}\n```"
+        return call
+
+    ok = asyncio.run(run_hook(stmts, script="", prompts=PROMPTS, call=answers("OK")))
+    assert not ok.cancelled and [e["name"] for e in ok.log] == ["CHECK"]
+    no = asyncio.run(run_hook(stmts, script="", prompts=PROMPTS, call=answers("RESEARCH")))
+    assert no.cancelled and [e["name"] for e in no.log] == ["CHECK"]
+
+
+def test_cancel_before_a_step_means_the_step_doesnt_run(tmp_path, monkeypatch):
+    row = {**BEFORE_ROW,
+           "Rules": '< outline STRICT_VALIDATION; IF (TAG CONTAINS "NOT") { STOP; } '
+                    "ELSE { CANCEL; } " + NBA2_RULES}
+    cfg = sc.parse_tsv(tsv([row])).config
+    sc.config_path().parent.mkdir(parents=True, exist_ok=True)
+    sc.config_path().write_text(json.dumps(cfg), encoding="utf-8")
+    monkeypatch.setenv("FAKE_CLAUDE_MODE", "codeblock")
+    monkeypatch.setenv("FAKE_RULES_COUNTER", str(tmp_path / "rule_counts.json"))
+    monkeypatch.setenv("FAKE_READY_AT", "1")     # the check says READY -> CANCEL
+    body = {"brand": "nba_brand_2", "branch": 0, "step": "outline", "language": "English",
+            "new_project": True,
+            "inputs": {"video_title": "KD 25", "inspirational_script": "Competitor text"}}
+    r = client.post("/api/scripting/run", json=body)
+    assert r.status_code == 409, r.text
+    detail = r.json()["detail"]
+    assert detail["code"] == "step_cancelled" and "Outline didn't run" in detail["message"]
+    assert [e["name"] for e in detail["rules"]["log"]] == ["STRICT_VALIDATION"]
+    assert not list((get_cli_settings().output_dir / "outline").glob("*.txt"))
+    monkeypatch.setenv("FAKE_READY_AT", "99")    # NOT READY -> STOP: the step runs
+    assert client.post("/api/scripting/run", json=body).status_code == 200
+
+
+def test_the_top10_paraphrasing_rules_file_works():
+    from app.rules.explain import brand_rules
+    rules = next(r for _, r in keys.RULE_EXAMPLES if "ENTRIES_VALIDATION" in r)
+    prompts = {"ENTRIES_VALIDATION": "Check the entries. STATUS - CONTINUE or STATUS - RESEARCH",
+               "STRICT_VALIDATION": TITLE_PROMPTS["STRICT_VALIDATION"],
+               "TITLE_SATISFACTION": TITLE_PROMPTS["TITLE_SATISFACTION"],
+               "APPLY_CHANGES": "Fix it."}
+    program = parse(rules, STEPS)
+    assert list(program.before) == ["paraphrasing"]
+    assert set(program.hooks) >= {"paraphrasing", "audits"}
+    view = brand_rules({"rules": rules, "rule_prompts": prompts}, STEPS)
+    assert view["error"] is None
+    heads = [line["code"] for line in view["lines"] if line["indent"] == 0
+             and line["code"][0] in "<>"]
+    assert heads == ["< paraphrasing", "> paraphrasing OR audits"]
+    before = next(r for r in view["runs"] if r["when"] == "before")
+    assert [r["what"] for r in before["rows"]] == ["ENTRIES_VALIDATION #1", "Paraphrasing"]
+    assert "CONTINUE" in before["rows"][0]["result"]
