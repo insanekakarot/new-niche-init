@@ -3,12 +3,17 @@ from pathlib import Path
 
 import pytest
 
+import app.cli
 from app.cli.config import clear_settings_cache
 from app.config import settings
 
 HERE = Path(__file__).parent
 FAKE_CLAUDE = HERE / "fake_claude.py"
 FAKE_CODEX = HERE / "fake_codex.py"
+
+
+async def _no_wait(_seconds):
+    return None
 
 
 @pytest.fixture(autouse=True)
@@ -26,6 +31,7 @@ def isolated_storage(tmp_path, monkeypatch):
     monkeypatch.setenv("CODEX_CLI_REASONING_EFFORT", "medium")
     monkeypatch.delenv("FAKE_CLAUDE_MODE", raising=False)
     monkeypatch.delenv("FAKE_CODEX_MODE", raising=False)
+    monkeypatch.setattr(app.cli, "_sleep", _no_wait)  # retries without the 3-5 s pauses
     clear_settings_cache()
     yield
     clear_settings_cache()

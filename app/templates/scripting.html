@@ -793,8 +793,8 @@
       <div class="flex flex-wrap items-center justify-between gap-3 bg-emerald-50 px-4 py-3">
         <div class="min-w-0">
           <div class="text-sm font-semibold text-emerald-800">✓ ${esc(currentStep().label)} ready · ${r.words.toLocaleString()} words</div>
-          ${projectLine}${extractLine}
-          <div class="flex flex-wrap items-center gap-x-1 text-xs text-emerald-700"><span class="inline-flex items-center">${who}</span> ${esc(m.model)} · ${esc(m.effort)} · ${fmtTime(m.duration_s)}${usage} · saved to <code>output/${esc(r.file.step)}/${esc(r.file.name)}</code></div>
+          ${projectLine}${extractLine}${beforeLine}
+          <div class="flex flex-wrap items-center gap-x-1 text-xs text-emerald-700"><span class="inline-flex items-center">${who}</span> ${esc(m.model)} · ${esc(m.effort)} · ${fmtTime(m.duration_s)}${m.retries ? ` · after ${m.retries} retr${m.retries === 1 ? 'y' : 'ies'}` : ''}${usage} · saved to <code>output/${esc(r.file.step)}/${esc(r.file.name)}</code></div>
         </div>
         <div class="flex flex-wrap gap-2">
           ${r.response ? `<div class="inline-flex rounded-lg bg-paper p-1 ring-1 ring-emerald-200">
@@ -892,12 +892,12 @@
       const what = e.kind === 'check' ? 'check' : 'revision';
       const pass = e.iteration ? ` · pass ${e.iteration}` : '';
       let result = '';
-      if (e.status === 'running') result = `<span class="inline-flex items-center gap-1 text-muted">${spin} running…</span>`;
+      if (e.status === 'running') result = `<span class="inline-flex items-center gap-1 text-muted">${spin} ${e.retry ? `connection failed, retry ${esc(e.retry)}…` : 'running…'}</span>`;
       else if (e.status === 'failed') result = '<span class="font-semibold text-accent">failed</span>';
       else if (e.kind === 'check') result = `${tagBadge(e.tag, e.passed)}${e.rating != null ? ` <span class="text-muted">· rating ${esc(e.rating)}</span>` : ''}`;
       else result = `<span class="text-emerald-700">new script · ${Number(e.words || 0).toLocaleString()} words</span>`;
       return `<li class="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5 text-sm">
-          <span class="min-w-0"><span class="font-semibold text-ink">${e.n}. ${esc(e.name)}</span> <span class="text-xs text-faint">${what}${pass}${e.duration_s != null ? ' · ' + fmtTime(e.duration_s) : ''}</span>
+          <span class="min-w-0"><span class="font-semibold text-ink">${e.n}. ${esc(e.name)}</span> <span class="text-xs text-faint">${what}${pass}${e.duration_s != null ? ' · ' + fmtTime(e.duration_s) : ''}${e.retries ? ` · after ${e.retries} retr${e.retries === 1 ? 'y' : 'ies'}` : ''}</span>
             ${e.warning ? `<span class="block text-xs text-amber-700">⚠ ${esc(e.warning)}</span>` : ''}</span>
           <span class="flex items-center gap-2 text-xs">${result}</span>
         </li>`;

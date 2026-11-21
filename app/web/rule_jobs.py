@@ -160,8 +160,13 @@ def _caller(job: Job, folder, rule_prompts: dict[str, str]):
         base = f"{entry['n']:02d}-{name.lower()}"
         (folder / f"{base}.prompt.txt").write_text(prompt, encoding="utf-8")
         effort = job.chosen_effort or cli.effort_for(name.lower()) or cli.effort_for(job.step)
+        def retrying(n: int, total: int, exc: CliError, wait: float) -> None:
+            # Shown on the page while it waits: "retry 1/3".
+            entry.update(retry=f"{n}/{total}", retry_error=str(exc)[:300])
+
         result = await run_cli(job.provider, prompt, effort, resume=job.session_id,
-                               workdir=workdir, keep_session=True)
+                               workdir=workdir, keep_session=True, on_retry=retrying)
+        entry.pop("retry", None)
         job.session_id = result.session_id or job.session_id
         job.model, job.effort = result.model, result.effort
         projects.update_session(job.project_id, job.session_id)
@@ -169,7 +174,7 @@ def _caller(job: Job, folder, rule_prompts: dict[str, str]):
         block = code_block(result.text)
         job.outputs[name.lower()] = (block.text if block.found else result.text).strip()
         entry.update(file=f"{base}.txt", model=result.model, effort=result.effort,
-                     cost_usd=result.cost_usd)
+                     cost_usd=result.cost_usd, retries=result.retries)
         return result.text
 
     return call

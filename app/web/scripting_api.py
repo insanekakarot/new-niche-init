@@ -338,6 +338,7 @@ async def run_step(req: RunRequest, background: BackgroundTasks):
         "models_used": result.models_used,
         "effort": result.effort,
         "duration_s": round(result.duration_s, 1),
+        "retries": result.retries,
         "cost_usd": result.cost_usd,
         "num_turns": result.num_turns,
         "session_id": result.session_id,
@@ -390,7 +391,8 @@ async def run_step(req: RunRequest, background: BackgroundTasks):
                  "response_url": outputs.download_url(step["name"], path.name, full=True)
                  if extracted else None},
         "meta": {k: meta[k] for k in ("provider", "model", "effort", "duration_s", "cost_usd",
-                                      "num_turns", "language", "created_at", "resumed")},
+                                      "num_turns", "language", "created_at", "resumed",
+                                      "retries")},
         "project": projects.summary(project),
         "usage": result.usage,
     }

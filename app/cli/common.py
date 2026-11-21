@@ -33,6 +33,8 @@ class CliResult:
     num_turns: int | None = None
     usage: dict = field(default_factory=dict)
     models_used: list[str] = field(default_factory=list)
+    # Failed tries before this one succeeded (run_cli retries; 0 = first try worked).
+    retries: int = 0
 
 
 _slots: dict[str, tuple[asyncio.Semaphore, int]] = {}
