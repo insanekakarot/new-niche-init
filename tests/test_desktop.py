@@ -80,6 +80,14 @@ def test_web_app_does_not_need_pywebview():
     assert "webview" not in getattr(app.main, "__dict__", {})
 
 
+def test_pages_have_a_menu_for_narrow_windows():
+    from fastapi.testclient import TestClient
+
+    from app.main import app
+    page = TestClient(app).get("/").text
+    assert 'aria-label="Menu"' in page and "sm:hidden" in page
+
+
 def test_display_env_fills_in_wslg_when_the_shell_has_none(monkeypatch, tmp_path):
     wayland = tmp_path / "wayland-0"
     wayland.touch()

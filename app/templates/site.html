@@ -34,6 +34,10 @@
   </script>
   <style>
     body { letter-spacing: 0.012em; }
+    /* Any window size: long words, URLs and code never push the page wider than the window. */
+    main { overflow-wrap: break-word; }
+    main pre, main table { max-width: 100%; }
+    main img, main svg, main video { max-width: 100%; height: auto; }
     .label { font-family: "Geist Mono", ui-monospace, monospace; font-size: 11px; letter-spacing: .16em; text-transform: uppercase; }
     .font-serif { letter-spacing: 0.01em; }
     .btn { display: inline-flex; align-items: center; gap: .5rem; height: 2.25rem; padding: 0 1rem; border-radius: 8px;
@@ -91,7 +95,25 @@
       </nav>
       <div class="ml-auto flex items-center gap-3">
         <a href="/admin/scripts/dashboard" class="btn btn-secondary hidden sm:inline-flex">Admin</a>
-        <a href="/scripting" class="btn btn-primary">Open Scripting</a>
+        <a href="/scripting" class="btn btn-primary whitespace-nowrap"><span class="hidden sm:inline">Open </span>Scripting</a>
+        <!-- Narrow windows: the Tools / Admin links above are hidden, so they live in this menu
+             (last in the bar, so its panel opens inside the window) -->
+        <div class="dd relative sm:hidden" data-dd>
+          <button type="button" data-dd-toggle aria-expanded="false" aria-label="Menu" class="btn btn-secondary px-3">
+            <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M2 4.75A.75.75 0 012.75 4h14.5a.75.75 0 010 1.5H2.75A.75.75 0 012 4.75zm0 5A.75.75 0 012.75 9h14.5a.75.75 0 010 1.5H2.75A.75.75 0 012 9.75zm0 5a.75.75 0 01.75-.75h14.5a.75.75 0 010 1.5H2.75a.75.75 0 01-.75-.75z" clip-rule="evenodd"/></svg>
+          </button>
+          <div class="dd-panel absolute right-0 top-full z-40 mt-2 w-64 max-w-[calc(100vw-2rem)] overflow-hidden rounded-lg border border-line bg-paper p-1 shadow-[0_8px_24px_rgba(30,28,26,.08)]">
+            <div class="px-3 pb-1 pt-2 label text-faint">Tools</div>
+            {% for t in nav_tools %}
+            <a href="{{ t.path }}" class="flex items-center justify-between gap-3 rounded-md px-3 py-2.5 text-[14px] transition hover:bg-card">
+              <span>{{ t.short_name }}</span>
+              {% if t.status == 'live' %}<span class="rounded bg-accent-tint px-1.5 py-0.5 text-[11px] font-medium text-accent">Live</span>{% else %}<span class="text-[11px] text-faint">Planned</span>{% endif %}
+            </a>
+            {% endfor %}
+            <div class="my-1 border-t border-line"></div>
+            <a href="/admin/scripts/dashboard" class="block rounded-md px-3 py-2.5 text-[14px] transition hover:bg-card">Admin</a>
+          </div>
+        </div>
       </div>
     </div>
   </header>
