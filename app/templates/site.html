@@ -66,12 +66,24 @@
 </head>
 <body class="flex min-h-screen flex-col bg-paper font-sans text-ink antialiased selection:bg-accent selection:text-white">
   <!-- Top bar -->
-  <header class="sticky top-0 z-30 border-b border-line bg-paper/95 backdrop-blur">
-    <div class="mx-auto flex h-16 max-w-6xl items-center gap-6 border-x border-line px-6 sm:px-10">
-      <a href="/" class="flex items-center gap-2.5" aria-label="New Niche Overall home">
-        <span class="flex h-7 w-7 items-center justify-center rounded-md bg-accent font-serif text-[18px] leading-none text-white">N</span>
-        <span class="font-serif text-[21px]">New Niche</span>
-      </a>
+  {# Solid, not see-through + blur: the blur was redrawn on every scrolled frame, which made
+     scrolling lag where there's no GPU (the desktop window on WSL). It looks the same. #}
+  <header class="sticky top-0 z-30 border-b border-line bg-paper">
+    <div class="mx-auto flex h-16 max-w-6xl items-center gap-3 border-x border-line px-4 sm:gap-6 sm:px-10">
+      {# Back: the previous page in this app, else the page above this one. The desktop windows
+         have no browser toolbar, so this is the way back from any page. #}
+      {% set here = request.url.path if request else '/' %}
+      {% set back_to = back_to | default('/admin/scripts/dashboard' if here.startswith('/admin/') and here not in ('/admin/scripts/dashboard', '/admin/login') else '/') %}
+      <div class="flex items-center gap-2 sm:gap-3">
+        <button type="button" id="nav-back" data-fallback="{{ back_to }}" aria-label="Back" title="Back"
+                class="-ml-2 flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg text-muted transition hover:bg-card hover:text-accent focus:outline-none focus-visible:bg-card focus-visible:text-accent{% if here == '/' %} hidden{% endif %}">
+          <svg class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M12.79 5.23a.75.75 0 01-.02 1.06L8.832 10l3.938 3.71a.75.75 0 11-1.04 1.08l-4.5-4.25a.75.75 0 010-1.08l4.5-4.25a.75.75 0 011.06.02z" clip-rule="evenodd"/></svg>
+        </button>
+        <a href="/" class="flex items-center gap-2.5" aria-label="New Niche Overall home">
+          <span class="flex h-7 w-7 items-center justify-center rounded-md bg-accent font-serif text-[18px] leading-none text-white">N</span>
+          <span class="hidden whitespace-nowrap font-serif text-[21px] min-[420px]:inline">New Niche</span>
+        </a>
+      </div>
       <nav class="hidden items-center gap-3 text-[14px] font-medium sm:flex">
         <div class="dd relative" data-dd>
           <button type="button" data-dd-toggle aria-expanded="false" class="flex items-center gap-1.5 rounded px-2.5 py-1.5 transition hover:bg-card">
@@ -127,7 +139,7 @@
   <footer class="border-t border-line">
     <div class="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 border-x border-line px-6 py-6 text-[13px] text-faint sm:px-10">
       <span>New Niche Overall · Automation suite</span>
-      <a href="/health" class="flex items-center gap-2 transition hover:text-ink"><span class="h-1.5 w-1.5 rounded-full bg-[#309d4b]"></span>Server online</a>
+      <a href="/health" target="_blank" rel="noopener" class="flex items-center gap-2 transition hover:text-ink"><span class="h-1.5 w-1.5 rounded-full bg-[#309d4b]"></span>Server online</a>
     </div>
   </footer>
 
@@ -148,6 +160,19 @@
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') document.querySelectorAll('[data-dd].open').forEach((dd) => dd.classList.remove('open'));
     });
+    // Back: to the previous page if it was in this app, else up to data-fallback.
+    (() => {
+      const btn = document.getElementById('nav-back');
+      if (!btn) return;
+      let fromHere = false;
+      try { fromHere = !!document.referrer && new URL(document.referrer).origin === location.origin; } catch { /* no referrer */ }
+      const canGoBack = fromHere && history.length > 1;
+      if (canGoBack) btn.classList.remove('hidden');  // also on the home page, after moving around
+      btn.addEventListener('click', () => {
+        if (canGoBack) history.back();
+        else location.href = btn.dataset.fallback || '/';
+      });
+    })();
   </script>
   {% block scripts %}{% endblock %}
 </body>

@@ -120,3 +120,9 @@ def test_render_env_turns_off_animated_wheel_scrolling_unless_flags_are_set(monk
     assert desktop.render_env({}) == {}
 
 
+def test_header_has_no_blur():
+    from fastapi.testclient import TestClient
+
+    from app.main import app
+    page = TestClient(app).get("/").text
+    assert "backdrop-blur" not in page
