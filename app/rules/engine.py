@@ -42,6 +42,7 @@ class State:
     runs: int = 0
     iteration: int = 0
     changed: bool = False
+    cancelled: bool = False  # CANCEL ran: before a step, the step doesn't run
     log: list[dict] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
 
@@ -117,6 +118,7 @@ class Result:
     rating: float
     log: list[dict]
     warnings: list[str]
+    cancelled: bool = False  # CANCEL ran (before a step: don't run the step)
 
     @property
     def ready(self) -> bool:
@@ -135,7 +137,7 @@ async def run_hook(stmts: list, *, script: str, prompts: dict[str, str], call: C
     except (_Break, _Continue, _Stop):
         pass  # BREAK / CONTINUE outside a loop, or STOP: the rules end here
     return Result(state.script, state.changed, state.tag, state.rating, state.log,
-                  state.warnings)
+                  state.warnings, state.cancelled)
 
 
 async def _block(stmts, state, prompts, call):
@@ -151,6 +153,7 @@ async def _block(stmts, state, prompts, call):
         elif isinstance(s, lang.Continue):
             raise _Continue
         elif isinstance(s, lang.Stop):
+            state.cancelled = state.cancelled or s.cancel
             raise _Stop
 
 

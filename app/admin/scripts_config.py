@@ -145,13 +145,14 @@ def _check_rules(name: str, cells: dict, used: set[str], inputs: dict[str, list[
     if missing:
         raise TsvError(f"{name}: Rules run {', '.join(missing)}, but Rule Prompts doesn't "
                        f'declare {"it" if len(missing) == 1 else "them"} (NAME = """...""").')
-    for step in program.hooks:
-        if step not in used:
-            warnings.append(f"{name}: Rules run after '{step}', but that step never runs.")
+    for when, hooks in (("after", program.hooks), ("before", program.before)):
+        for step in hooks:
+            if step not in used:
+                warnings.append(f"{name}: Rules run {when} '{step}', but that step never runs.")
     for unused in sorted(set(rule_prompts) - program.prompt_names()):
         warnings.append(f"{name}: rule prompt {unused} is declared but the Rules never run it.")
     checks = " ".join(" ".join(t.upper().split()) for t in rule_prompts.values() if is_check(t))
-    stmts = [s for hook in program.hooks.values() for s in hook]
+    stmts = [s for hook in [*program.hooks.values(), *program.before.values()] for s in hook]
     for tag in tag_literals(stmts):
         if not re.search(rf"\b{re.escape(tag)}\b", checks):
             warnings.append(

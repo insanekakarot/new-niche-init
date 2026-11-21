@@ -168,6 +168,29 @@ def _check_idle(project: dict) -> None:
                     f"{job.step_label} step. Wait for them to finish.", job=job.id)
 
 
+class _StepCancelled(Exception):
+    """CANCEL ran in the rules before the step ('< step'): the step doesn't run."""
+
+
+def _before_job(project, project_id, name, req, view, step, provider, values, inputs, effort,
+                session_id):
+    """A rules job for '< step': starts from the project's latest result ("" if none)."""
+    start_file, start_text = "", ""
+    if project and project.get("steps"):
+        last = project["steps"][-1]
+        start_file = last.get("file") or ""
+        start_text = projects.step_output(project, last["step"]) or ""
+    job = rule_jobs.create(
+        project={"id": project_id, "name": name, "brand": req.brand, "branch": req.branch},
+        view=view, step=step, provider=provider, language=req.language,
+        title=values.get("video_title", "") or name, start_file=start_file,
+        start_text=start_text,
+        values=rule_jobs.values_for(view, step, {**inputs, **values}, name, req.language),
+        effort=effort, when="before")
+    job.session_id = session_id
+    return job
+
+
 @router.post("/run")
 async def run_step(req: RunRequest, background: BackgroundTasks):
     try:
@@ -227,9 +250,6 @@ async def run_step(req: RunRequest, background: BackgroundTasks):
                         "step yet: run it first, or paste its result.")
         raise HTTPException(400, message)
 
-    prompt = build_step_prompt(brand=brand, view=view, branch=branch, step=step,
-                               inputs=values, language=req.language, project_name=name,
-                               continuing=project is not None, in_chat=in_chat)
     # Effort: the one picked on the page for this step, else CLI_STEP_EFFORTS, else the
     # provider's default.
     chosen = _check_effort(provider, req.effort)
@@ -241,10 +261,28 @@ async def run_step(req: RunRequest, background: BackgroundTasks):
     else:
         project_id, resume = projects.reserve_id(req.brand, name), None
     workdir = projects.workdir(project_id) if provider == "codex" else None
-    run_args = {"effort": effort, "resume": resume, "workdir": workdir, "keep_session": True}
 
+    # Rules before this step ('< outline ...'): they run first, in the same conversation (for
+    # a new project they start it), and their results can fill {{ name }} in the step prompt.
+    before_hook = rule_jobs.hook_for(brand, step["name"], before=True) if req.run_rules else None
+    before = None
     try:
         async with projects.lock(project_id):
+            if before_hook:
+                before = _before_job(project, project_id, name, req, view, step, provider,
+                                     values, inputs, chosen, resume)
+                await rule_jobs.run_before(before, *before_hook)
+                resume = before.session_id
+                if before.state.cancelled:
+                    raise _StepCancelled
+            prompt = build_step_prompt(
+                brand=brand, view=view, branch=branch, step=step, inputs=values,
+                language=req.language, project_name=name,
+                continuing=project is not None or resume is not None, in_chat=in_chat,
+                rule_results=before.outputs if before else None,
+                builtins=rule_jobs.values_for(view, step, {}, name, req.language))
+            run_args = {"effort": effort, "resume": resume, "workdir": workdir,
+                        "keep_session": True}
             result = await run_cli(provider, prompt, **run_args)
     except CliError as exc:
         if project is None:
@@ -253,7 +291,9 @@ async def run_step(req: RunRequest, background: BackgroundTasks):
             raise HTTPException(429, str(exc)) from exc
         if isinstance(exc, CliTimeout):
             raise HTTPException(504, str(exc)) from exc
-        if resume:
+        if before is not None and before.status == "failed":
+            raise _fail(502, "rules_before_failed", str(exc), rules=before.public()) from exc
+        if resume and project:
             raise _fail(502, "resume_failed",
                         f"{exc} Couldn't continue project “{project['name']}”'s conversation. "
                         "Turn on New project to start a fresh one.") from exc
@@ -298,6 +338,9 @@ async def run_step(req: RunRequest, background: BackgroundTasks):
         # The values sent (typed in, or taken from the project's saved results).
         "inputs": values,
         "in_conversation": sorted(in_chat),
+        # Rules that ran just before this step ('< step'): job id, log and what they returned.
+        "rules_before": ({"job": before.id, "log": before.public()["log"],
+                          "outputs": sorted(before.outputs)} if before else None),
     }
     path = outputs.save_output(step=step["name"], brand_key=req.brand, title=title,
                                text=output, meta=meta,
@@ -324,6 +367,8 @@ async def run_step(req: RunRequest, background: BackgroundTasks):
         background.add_task(rule_jobs.run, job, *hook)
     return {
         "rules": job.public() if job else None,
+        # The rules that ran before this step ('< step'), if any.
+        "rules_before": before.public() if before else None,
         "text": output,
         "words": words,
         # The whole response when `text` is only its code block, else None.

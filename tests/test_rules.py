@@ -4,6 +4,7 @@ import asyncio
 import csv
 import io
 import json
+import re
 
 import pytest
 from fastapi.testclient import TestClient
@@ -14,6 +15,7 @@ from app.cli.config import get_cli_settings
 from app.main import app
 from app.rules import RuleSyntaxError, is_check, parse, parse_rule_prompts, run_hook
 from app.rules.engine import parse_rating, parse_tag
+from app.rules.lang import Run
 from app.web import projects, rule_jobs
 from app.web.scripting import find_brand
 
@@ -37,7 +39,7 @@ RULE_PROMPTS = (
 @pytest.mark.parametrize("description, text", keys.RULE_EXAMPLES)
 def test_every_example_in_the_key_parses(description, text):
     program = parse(text, STEPS)
-    assert program.hooks and program.prompt_names()
+    assert (program.hooks or program.before) and program.prompt_names()
 
 
 def test_key_lists_every_keyword_the_parser_knows():
@@ -549,3 +551,127 @@ def test_rules_use_the_effort_picked_for_the_step(brand2):
         "project_id": done["project_id"], "effort": "low"}).json()
     rerun = client.get(f"/api/scripting/rules/{again['id']}").json()
     assert {e["effort"] for e in rerun["log"]} == {"low"}
+
+
+# ------------------------------------------------------------ rules before a step ('< step')
+
+def test_parse_before_and_after_hooks():
+    program = parse('Be calm. < outline RESEARCH; > audits STRICT_VALIDATION; '
+                    'IF (RATING < 9) { APPLY_CHANGES; }', STEPS)
+    assert program.guidance == "Be calm."
+    assert program.before == {"outline": [Run("RESEARCH")]}
+    assert list(program.hooks) == ["audits"]
+    assert program.prompt_names() == {"RESEARCH", "STRICT_VALIDATION", "APPLY_CHANGES"}
+
+
+@pytest.mark.parametrize("text, message", [
+    ("< outline RESEARCH; < outline MORE;", "'< outline' appears twice"),
+    ("< outline", "'< outline' has no rules"),
+    ("> audits LOOP { CHECK; < outline RESEARCH;", "missing before the next '<'"),
+])
+def test_bad_before_hooks(text, message):
+    with pytest.raises(RuleSyntaxError, match=re.escape(message)):
+        parse(text, STEPS)
+
+
+BEFORE_ROW = {
+    **NBA2_ROW,
+    "Outline": "Outline task for {{video_title}}. Research: {{ research }}. "
+               "Competitor: {{competitor_script}}. Put the outline inside a Markdown code block.",
+    "Rules": "< outline RESEARCH; " + NBA2_RULES,
+    "Rule Prompts": RULE_PROMPTS + ' RESEARCH = """ Research the game. Put the facts in a code '
+                                   'block. """',
+}
+
+
+@pytest.fixture
+def brand_before(tmp_path, monkeypatch):
+    cfg = sc.parse_tsv(tsv([BEFORE_ROW])).config
+    sc.config_path().parent.mkdir(parents=True, exist_ok=True)
+    sc.config_path().write_text(json.dumps(cfg), encoding="utf-8")
+    monkeypatch.setenv("FAKE_CLAUDE_MODE", "codeblock")
+    monkeypatch.setenv("FAKE_RULES_COUNTER", str(tmp_path / "rule_counts.json"))
+    return cfg
+
+
+def test_view_lists_rules_before_a_step(brand_before):
+    _, view = find_brand("nba_brand_2")
+    outline = view["branches"][0]["steps"][0]
+    assert outline["rules_before"] == ["RESEARCH"] and outline["rules_after"] == []
+    assert outline["rule_placeholders"] == ["research"]
+    assert "research" not in outline["unknown_placeholders"]
+
+
+def test_rules_before_the_first_step_start_the_conversation(brand_before):
+    data = step("outline", new_project=True)
+    before = data["rules_before"]
+    assert before and before["when"] == "before" and before["status"] == "done"
+    assert [e["name"] for e in before["log"]] == ["RESEARCH"]
+    sent = json.loads(data["text"].split("\n", 1)[1])
+    # The research result filled {{ research }}, and the step continued its conversation.
+    assert "Research: REVISED SCRIPT v1 by RESEARCH." in sent["prompt"]
+    assert "Just before this step, this conversation ran: RESEARCH" in sent["prompt"]
+    resumed = sent["argv"][sent["argv"].index("--resume") + 1]
+    assert resumed.startswith("fake-session-")
+    out = get_cli_settings().output_dir / "outline" / data["file"]["name"]
+    meta = json.loads(out.with_suffix(".json").read_text(encoding="utf-8"))
+    assert meta["rules_before"]["outputs"] == ["research"]
+    project = projects.load(data["project"]["id"])
+    assert project and project["session_id"] == resumed
+    folder = projects.projects_dir() / project["id"] / "rules" / f"before-outline-{before['id']}"
+    prompt = (folder / "01-research.prompt.txt").read_text(encoding="utf-8")
+    assert prompt.startswith("# Rule: RESEARCH (before the Outline step)")
+    assert (folder / "log.json").is_file()
+
+
+def test_rules_switch_off_skips_the_rules_before(brand_before):
+    data = step("outline", new_project=True, run_rules=False)
+    assert data["rules_before"] is None
+    sent = json.loads(data["text"].split("\n", 1)[1])
+    assert "--resume" not in sent["argv"] and "{{ research }}" in sent["prompt"]
+
+
+def test_a_failing_rule_before_stops_the_step(brand_before, monkeypatch):
+    monkeypatch.setenv("FAKE_CLAUDE_MODE", "error")
+    body = {"brand": "nba_brand_2", "branch": 0, "step": "outline", "language": "English",
+            "new_project": True,
+            "inputs": {"video_title": "KD 25", "inspirational_script": "Competitor text"}}
+    r = client.post("/api/scripting/run", json=body)
+    assert r.status_code == 502
+    detail = r.json()["detail"]
+    assert detail["code"] == "rules_before_failed" and "before Outline" in detail["message"]
+    assert not list(projects.projects_dir().glob("*")) or all(
+        not (p / "project.json").exists() for p in projects.projects_dir().iterdir())
+
+
+def test_dashboard_explains_rules_before(brand_before):
+    from app.rules.explain import brand_rules
+    brand = brand_before[0]["nba_brand_2"]
+    view = brand_rules(brand, STEPS)
+    assert view["before"] == ["outline"] and view["after"] == ["audits"]
+    assert view["lines"][0]["code"] == "< outline"
+    before_run = next(r for r in view["runs"] if r["when"] == "before")
+    assert [r["what"] for r in before_run["rows"]] == ["RESEARCH #1", "Outline"]
+    assert "{{ research }}" in before_run["final"]
+
+
+def test_rule_prompts_before_a_step_get_the_inputs_and_earlier_results(tmp_path, monkeypatch):
+    row = {**BEFORE_ROW,
+           "Rules": "< outline RESEARCH; FACT_CHECK; " + NBA2_RULES,
+           "Rule Prompts": RULE_PROMPTS
+           + ' RESEARCH = """ Research {{ video_title }} using {{ competitor_script }}. """'
+           + ' FACT_CHECK = """ Check these facts: {{ research }} for {{ brand_name }}. """'}
+    cfg = sc.parse_tsv(tsv([row])).config
+    sc.config_path().parent.mkdir(parents=True, exist_ok=True)
+    sc.config_path().write_text(json.dumps(cfg), encoding="utf-8")
+    monkeypatch.setenv("FAKE_CLAUDE_MODE", "codeblock")
+    monkeypatch.setenv("FAKE_RULES_COUNTER", str(tmp_path / "rule_counts.json"))
+    data = step("outline", new_project=True)
+    folder = (projects.projects_dir() / data["project"]["id"] / "rules"
+              / f"before-outline-{data['rules_before']['id']}")
+    research = (folder / "01-research.prompt.txt").read_text(encoding="utf-8")
+    assert "Research KD 25 using Competitor text." in research      # the step's inputs
+    check = (folder / "02-fact_check.prompt.txt").read_text(encoding="utf-8")
+    assert "Check these facts: REVISED SCRIPT v1 by RESEARCH for NBA Brand 2." in check
+
+

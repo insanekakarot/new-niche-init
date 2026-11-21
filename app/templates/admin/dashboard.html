@@ -73,6 +73,7 @@
           <code class="rounded bg-accent-tint px-1.5 py-0.5 text-xs text-accent">{{ key }}</code>
         </div>
         {% set r = rules.get(key) %}
+        {% if r and r.before %}<span class="rounded-full border border-line bg-accent-tint px-3 py-1 text-xs font-medium text-accent-dark">Rules before {{ r.before | map('capitalize') | join(', ') }}</span>{% endif %}
         {% if r and r.after %}<span class="rounded-full border border-line bg-accent-tint px-3 py-1 text-xs font-medium text-accent-dark">Rules after {{ r.after | map('capitalize') | join(', ') }}</span>
         {% elif b.rules %}<span class="rounded-full border border-line bg-accent-tint px-3 py-1 text-xs font-medium text-accent-dark">Has rules</span>{% endif %}
       </div>

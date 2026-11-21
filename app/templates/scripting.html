@@ -183,7 +183,7 @@
       <div id="s-rules" class="mt-5 hidden rounded-lg border border-line bg-card p-4">
         <div class="flex flex-wrap items-center justify-between gap-3">
           <div class="min-w-0">
-            <div class="text-sm font-semibold text-ink">Rules after this step</div>
+            <div id="s-rules-title" class="text-sm font-semibold text-ink">Rules after this step</div>
             <p id="s-rules-text" class="mt-0.5 text-xs leading-5 text-muted"></p>
           </div>
           <button id="run-rules" type="button" role="switch" aria-checked="true"
@@ -459,11 +459,17 @@
     $('project-name').value = state.projectName;
     $('project-name').placeholder = s.fields.some((f) => f.name === 'video_title') ? 'Same as the video title' : 'Name this project';
 
-    // Rules after this step
-    const ra = s.rules_after || [];
-    $('s-rules').classList.toggle('hidden', !ra.length);
-    if (ra.length) {
-      $('s-rules-text').innerHTML = `When ${esc(s.label)} finishes, the same conversation runs ${ra.map((n) => `<code class="rounded bg-paper px-1 py-0.5 text-[11px] text-ink">${esc(n)}</code>`).join(' · ')} as the brand rules say, until they end. The latest script from a code block becomes the final ${esc(s.label.toLowerCase())} result.`;
+    // Rules before ('< step') and after ('> step') this step
+    const ra = s.rules_after || [], rb = s.rules_before || [];
+    const codes = (names) => names.map((n) => `<code class="rounded bg-paper px-1 py-0.5 text-[11px] text-ink">${esc(n)}</code>`).join(' · ');
+    $('s-rules').classList.toggle('hidden', !ra.length && !rb.length);
+    if (ra.length || rb.length) {
+      $('s-rules-title').textContent = ra.length && rb.length ? 'Rules before and after this step' : rb.length ? 'Rules before this step' : 'Rules after this step';
+      const fills = (s.rule_placeholders || []).map((p) => '{' + '{ ' + p + ' }' + '}');
+      $('s-rules-text').innerHTML = [
+        rb.length ? `Before ${esc(s.label)}, the same conversation runs ${codes(rb)} first${state.newProject ? ' (it starts the new project’s conversation)' : ''}; ${esc(s.label)} follows with their answers${fills.length ? `, and ${esc(fills.join(', '))} in its prompt is filled with their results` : ''}.` : '',
+        ra.length ? `When ${esc(s.label)} finishes, the same conversation runs ${codes(ra)} as the brand rules say, until they end. The latest script from a code block becomes the final ${esc(s.label.toLowerCase())} result.` : '',
+      ].filter(Boolean).join(' ');
       $('run-rules').setAttribute('aria-checked', String(state.runRules));
     }
     renderRules();
@@ -704,6 +710,11 @@
       ? `<div class="text-xs text-emerald-700">Saved the code block as the result${next.length ? ` · filled into ${next.map(esc).join(', ')}` : ''} · the full response (${words(r.response).toLocaleString()} words) is kept beside it</div>`
       : '';
     const warn = ex.warning ? `<div class="border-t border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-800">⚠ ${esc(ex.warning)}</div>` : '';
+    // The rules that ran before this step ('< step'), one entry per rule prompt run.
+    const rb = r.rules_before;
+    const beforeLine = rb && rb.log && rb.log.length
+      ? `<div class="text-xs text-emerald-700">Ran first: ${rb.log.map((e) => `${esc(e.name)}${e.tag ? ` (${esc(e.tag)})` : ''}`).join(' → ')}${(rb.warnings || []).length ? ` · ⚠ ${esc(rb.warnings.join(' '))}` : ''}</div>`
+      : '';
     box.className = 'mt-5 fade-in overflow-hidden rounded-lg border border-emerald-200';
     box.innerHTML = `
       <div class="flex flex-wrap items-center justify-between gap-3 bg-emerald-50 px-4 py-3">
@@ -888,7 +899,8 @@
     $('run').disabled = true;
     $('run').innerHTML = `<svg class="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" opacity=".25"/><path d="M22 12a10 10 0 0 0-10-10" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg> Running ${esc(s.label)}…`;
     const who = providerByKey[state.provider].label;
-    const tick = () => { $('status').textContent = `${who} is writing the ${s.label.toLowerCase()}… ${fmtTime((Date.now() - started) / 1000)} (long steps can take several minutes)`; };
+    const first = state.runRules && (s.rules_before || []).length ? `running ${s.rules_before.join(', ')}, then ` : '';
+    const tick = () => { $('status').textContent = `${who} is ${first}writing the ${s.label.toLowerCase()}… ${fmtTime((Date.now() - started) / 1000)} (long steps can take several minutes)`; };
     tick();
     const timer = setInterval(tick, 1000);
     try {

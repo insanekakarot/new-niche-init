@@ -117,11 +117,31 @@ def lines(program: lang.Program, prompts: dict[str, str]) -> list[dict]:
             walk(s.else_, indent + 1, in_loop)
         add(indent, "}")
 
-    for step, stmts in program.hooks.items():
-        add(0, f"{keys.HOOK} {step}", f"after the {step.capitalize()} step, in the same "
-            "project conversation")
+    for steps, stmts in grouped(program.before):
+        add(0, f"{keys.HOOK_BEFORE} {' OR '.join(steps)}", f"before the {_names(steps)} step, "
+            "in the same project conversation (each result can fill {{ name }} in its prompt)")
+        walk(stmts, 0, False)
+    for steps, stmts in grouped(program.hooks):
+        add(0, f"{keys.HOOK} {' OR '.join(steps)}", f"after the {_names(steps)} step, in the "
+            "same project conversation")
         walk(stmts, 0, False)
     return out
+
+
+def grouped(hooks: dict[str, list]) -> list[tuple[list[str], list]]:
+    """Hooks as written: '> paraphrasing OR audits' is one hook for two steps."""
+    out: list[tuple[list[str], list]] = []
+    for step, stmts in hooks.items():
+        same = next((g for g in out if g[1] is stmts), None)
+        if same:
+            same[0].append(step)
+        else:
+            out.append(([step], stmts))
+    return out
+
+
+def _names(steps: list[str]) -> str:
+    return " or ".join(s.capitalize() for s in steps)
 
 
 _SEGMENT = re.compile(r'(?P<str>"[^"]*")|(?P<word>[A-Za-z_]\w*)|(?P<num>\d+(?:\.\d+)?)|(?P<other>.)',
@@ -172,11 +192,17 @@ def brand_rules(brand: dict, steps, values: dict[str, str] | None = None) -> dic
                               "about": keys.BUILTIN_PLACEHOLDERS.get(p)} for p in found],
         })
     runs = []
-    for step, stmts in program.hooks.items():
-        if all(n in prompts for n in lang.Program(None, {step: stmts}).prompt_names()):
-            runs.append({"step": step, **example_run(stmts, prompts, step)})
+    for when, hooks in (("before", program.before), ("after", program.hooks)):
+        for hook_steps, stmts in grouped(hooks):
+            step = hook_steps[0]
+            if all(n in prompts for n in lang.Program(None, {step: stmts}).prompt_names()):
+                # Before a step, show the main path: each check passes the first time.
+                runs.append({"step": step, "steps": hook_steps, "when": when,
+                             **example_run(stmts, prompts, step, when=when,
+                                           ready_at=1 if when == "before" else 2)})
     return {"guidance": program.guidance, "lines": rows, "error": error,
-            "after": list(program.hooks), "prompts": rule_prompts, "runs": runs}
+            "after": list(program.hooks), "before": list(program.before),
+            "prompts": rule_prompts, "runs": runs}
 
 
 # ---------------------------------------------------------------- a sample run
@@ -230,11 +256,15 @@ def pass_fail_tags(prompt: str, literals: list[str]) -> tuple[str, str]:
     return good, _OPPOSITE.get(good, f"NOT {good}")
 
 
-def example_run(stmts: list, prompts: dict[str, str], step: str, ready_at: int = 2) -> dict:
+def example_run(stmts: list, prompts: dict[str, str], step: str, ready_at: int = 2,
+                when: str = "after") -> dict:
     """Run the rules with made-up answers: each check fails until its `ready_at`-th run.
 
     Returns {"assumption", "rows": [{"what", "result"}], "final"} with scripts named A, B, C...
+    `when="before"`: the rules before the step ('< step'); the step runs after them.
     """
+    if when == "before":
+        return _example_before(stmts, prompts, step, ready_at)
     counts = {"revisions": 0}
     checks: dict[str, int] = {}
     literals = tag_literals(stmts)
@@ -281,4 +311,47 @@ def example_run(stmts: list, prompts: dict[str, str], step: str, ready_at: int =
         "rows": rows,
         "warnings": result.warnings,
         "final": f"Final {step.capitalize()} result = {result.script}",
+    }
+
+
+def _example_before(stmts: list, prompts: dict[str, str], step: str, ready_at: int) -> dict:
+    """The sample run of '< step': the rule prompts, then the step itself."""
+    literals = tag_literals(stmts)
+    checks: dict[str, int] = {}
+    ran: list[str] = []
+
+    async def call(name, entry):
+        if name.lower() not in ran:
+            ran.append(name.lower())
+        if is_check(prompts[name]):
+            checks[name] = checks.get(name, 0) + 1
+            good, bad = pass_fail_tags(prompts[name], literals)
+            return f"```\nSTATUS - {good if checks[name] >= ready_at else bad}\n```"
+        return f"```\n{name.lower()} result\n```"
+
+    result = asyncio.run(run_hook(stmts, script="", prompts=prompts, call=call))
+    seen: dict[str, int] = {}
+    rows = []
+    for e in result.log:
+        seen[e["name"]] = seen.get(e["name"], 0) + 1
+        what = f"{e['name']} #{seen[e['name']]}"
+        if e["kind"] == "check":
+            rows.append({"what": what, "result": f"→ {e['tag']}", "ready": e["passed"]})
+        else:
+            rows.append({"what": what,
+                         "result": f"→ its result fills {{{{ {e['name'].lower()} }}}}"})
+    if result.cancelled:
+        rows.append({"what": step.capitalize(), "result": "→ doesn't run (CANCEL)", "ready": False})
+    else:
+        rows.append({"what": step.capitalize(),
+                     "result": "→ the step runs, in the same conversation"})
+    fills = ", ".join(f"{{{{ {n} }}}}" for n in ran)
+    return {
+        "assumption": f"Sample run before {step.capitalize()} (a new project: the first rule "
+                      "prompt starts the conversation):",
+        "rows": rows,
+        "warnings": result.warnings,
+        "final": (f"{step.capitalize()} doesn't run: the rules said CANCEL" if result.cancelled
+                  else f"Then {step.capitalize()} runs"
+                  + (f", with {fills} available" if fills else "")),
     }

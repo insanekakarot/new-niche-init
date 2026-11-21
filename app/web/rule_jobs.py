@@ -25,7 +25,7 @@ from app.cli.config import get_cli_settings
 from app.rules.engine import passed
 from app.rules.lang import RuleSyntaxError
 from app.web import outputs, projects
-from app.web.extract import wants_code_block
+from app.web.extract import code_block, wants_code_block
 
 _jobs: dict[str, Job] = {}
 _KEEP = 200  # finished jobs remembered in memory
@@ -58,11 +58,16 @@ class Job:
     effort: str | None = None
     # Picked on the page for the step; wins over CLI_STEP_EFFORTS for every rule prompt.
     chosen_effort: str | None = None
+    when: str = "after"  # "after" ('> step', in the background) | "before" ('< step')
+    # Each rule prompt's latest result (code block, else the whole answer), by lower-case
+    # name: before a step these fill {{ name }} in the step's prompt.
+    outputs: dict[str, str] = field(default_factory=dict)
 
     def public(self) -> dict:
         st = self.state
         return {
             "id": self.id, "status": self.status, "step": self.step, "step_label": self.step_label,
+            "when": self.when,
             "project_id": self.project_id, "project_name": self.project_name,
             "provider": self.provider,
             "tag": st.tag, "rating": st.rating if st.tag else None, "runs": st.runs,
@@ -107,12 +112,12 @@ def values_for(view: dict, step: dict, inputs: dict[str, str], project_name: str
 
 def create(*, project: dict, view: dict, step: dict, provider: str, language: str, title: str,
            start_file: str, start_text: str, values: dict[str, str],
-           effort: str | None = None) -> Job:
+           effort: str | None = None, when: str = "after") -> Job:
     job = Job(id=secrets.token_hex(6), project_id=project["id"], project_name=project["name"],
               brand=project["brand"], brand_name=view["name"], branch=project.get("branch", 0),
               step=step["name"], step_label=step["label"], provider=provider, language=language,
               title=title, start_file=start_file, start_text=start_text, values=values,
-              chosen_effort=effort)
+              chosen_effort=effort, when=when)
     job.state = rules.State(script=start_text)
     _jobs[job.id] = job
     for old in [j for j in _jobs.values() if j.finished_at][:-_KEEP]:
@@ -121,12 +126,15 @@ def create(*, project: dict, view: dict, step: dict, provider: str, language: st
 
 
 def _prompt(job: Job, name: str, text: str, check: bool, entry: dict) -> str:
-    where = f"after the {job.step_label} step"
+    where = f"{job.when} the {job.step_label} step"
     if entry.get("iteration"):
         where += f" · loop pass {entry['iteration']}"
     parts = [f"# Rule: {name} ({where})", text.strip(), "",
              f"- Output language: {job.language}. Write the entire response in {job.language}."]
-    if check:
+    if job.when == "before":
+        parts.append(f"- This runs before the {job.step_label} step, which follows in this "
+                     "conversation and uses this answer.")
+    elif check:
         parts.append("- Check the current script: the most recent complete script in this "
                      "conversation.")
     elif not wants_code_block(text):
@@ -135,18 +143,17 @@ def _prompt(job: Job, name: str, text: str, check: bool, entry: dict) -> str:
     return "\n".join(parts)
 
 
-async def run(job: Job, stmts: list, rule_prompts: dict[str, str]) -> None:
-    """Run the hook's rules (a background task). Never raises: the job records what happened."""
-    folder = projects.projects_dir() / job.project_id / "rules" / job.id
-    folder.mkdir(parents=True, exist_ok=True)
-    project = projects.load(job.project_id) or {}
-    job.session_id = project.get("session_id")
+def _caller(job: Job, folder, rule_prompts: dict[str, str]):
+    """call(name, entry) for the engine: one rule prompt = one CLI call in the conversation."""
     workdir = projects.workdir(job.project_id) if job.provider == "codex" else None
     cli = get_cli_settings()
 
     async def call(name: str, entry: dict) -> str:
         check = rules.is_check(rule_prompts[name])
-        prompt = _prompt(job, name, rules.fill(rule_prompts[name], job.values), check, entry)
+        # {{ name }}: the run's inputs and built-ins, plus the results of rule prompts that
+        # already ran in this job (RESEARCH -> {{ research }} in a later rule prompt).
+        values = {**job.values, **job.outputs}
+        prompt = _prompt(job, name, rules.fill(rule_prompts[name], values), check, entry)
         base = f"{entry['n']:02d}-{name.lower()}"
         (folder / f"{base}.prompt.txt").write_text(prompt, encoding="utf-8")
         effort = job.chosen_effort or cli.effort_for(name.lower()) or cli.effort_for(job.step)
@@ -156,9 +163,55 @@ async def run(job: Job, stmts: list, rule_prompts: dict[str, str]) -> None:
         job.model, job.effort = result.model, result.effort
         projects.update_session(job.project_id, job.session_id)
         (folder / f"{base}.txt").write_text(result.text.rstrip() + "\n", encoding="utf-8")
+        block = code_block(result.text)
+        job.outputs[name.lower()] = (block.text if block.found else result.text).strip()
         entry.update(file=f"{base}.txt", model=result.model, effort=result.effort,
                      cost_usd=result.cost_usd)
         return result.text
+
+    return call
+
+
+def _folder(job: Job):
+    folder = projects.projects_dir() / job.project_id / "rules" / (
+        f"before-{job.step}-{job.id}" if job.when == "before" else job.id)
+    folder.mkdir(parents=True, exist_ok=True)
+    return folder
+
+
+def _save_log(job: Job, folder) -> None:
+    (folder / "log.json").write_text(json.dumps(job.public(), ensure_ascii=False, indent=2,
+                                                default=str) + "\n", encoding="utf-8")
+
+
+async def run_before(job: Job, stmts: list, rule_prompts: dict[str, str]) -> None:
+    """Run the rules before a step ('< step'), now, inside the step's own request.
+
+    The caller holds the project lock and set job.session_id (None for a new project: then the
+    first rule prompt starts the conversation). Afterwards job.session_id is the conversation
+    to send the step into and job.outputs fills {{ name }} in the step's prompt. Raises
+    CliError if a rule prompt fails, so the step doesn't run on half the rules.
+    """
+    folder = _folder(job)
+    job.status = "running"
+    try:
+        await rules.run_hook(stmts, script=job.start_text, prompts=rule_prompts,
+                             call=_caller(job, folder, rule_prompts), state=job.state)
+        job.status = "done"
+    except (CliError, RuleSyntaxError) as exc:
+        job.status, job.error = "failed", str(exc)
+        raise CliError(f"The rules before {job.step_label} stopped: {exc}") from exc
+    finally:
+        job.finished_at = time.time()
+        _save_log(job, folder)
+
+
+async def run(job: Job, stmts: list, rule_prompts: dict[str, str]) -> None:
+    """Run the hook's rules (a background task). Never raises: the job records what happened."""
+    folder = _folder(job)
+    project = projects.load(job.project_id) or {}
+    job.session_id = project.get("session_id")
+    call = _caller(job, folder, rule_prompts)
 
     job.status = "running"
     try:
@@ -175,8 +228,7 @@ async def run(job: Job, stmts: list, rule_prompts: dict[str, str]) -> None:
     except OSError as exc:
         job.status, job.error = "failed", f"Couldn't save the final script: {exc}"
     job.finished_at = time.time()
-    (folder / "log.json").write_text(json.dumps(job.public(), ensure_ascii=False, indent=2,
-                                                default=str) + "\n", encoding="utf-8")
+    _save_log(job, folder)
 
 
 def _finish(job: Job) -> None:
@@ -214,11 +266,12 @@ def _finish(job: Job) -> None:
     }
 
 
-def hook_for(brand: dict, step_name: str) -> tuple[list, dict[str, str]] | None:
-    """(statements to run after this step, rule prompts) or None if nothing runs after it."""
+def hook_for(brand: dict, step_name: str, *, before: bool = False
+             ) -> tuple[list, dict[str, str]] | None:
+    """(statements to run after this step, or before it, rule prompts) or None if none."""
     try:
         program = rules.parse(brand.get("rules"), STEP_COLUMNS)
     except RuleSyntaxError:
         return None
-    stmts = program.hooks.get(step_name)
+    stmts = (program.before if before else program.hooks).get(step_name)
     return (stmts, brand.get("rule_prompts") or {}) if stmts else None

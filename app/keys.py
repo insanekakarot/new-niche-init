@@ -18,6 +18,7 @@ Where each one is written in the TSV:
                   ``` ... ```                          the result is what's inside the code block
     Rule Prompts  NAME = \"\"\" ... \"\"\"                   a named prompt the Rules can run
     Rules         > audits  <statements>               after the Audits step, run the statements
+                  < outline <statements>               before the Outline step, run the statements
                   LOOP / IF / BREAK / ...              see RULE_KEYWORDS below
 """
 
@@ -97,6 +98,11 @@ RATING = re.compile(
 # '> audits' starts the statements that run after that step (until the next '>' or the end).
 # Text before the first '>' is plain brand guidance and is added to every step prompt.
 HOOK = ">"
+# '< outline' starts the statements that run *before* that step, in the same conversation, just
+# before the step's prompt is sent (before the first step, they start the conversation). Each
+# rule prompt's result (its code block, else the whole answer) fills {{name}} in the step's
+# prompt, e.g. RESEARCH -> {{ research }}.
+HOOK_BEFORE = "<"
 
 RULE_KEYWORDS: dict[str, str] = {
     "NAME;": "Run the rule prompt NAME (declared in Rule Prompts) in the project's "

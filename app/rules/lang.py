@@ -2,6 +2,8 @@
 
     'Be concise. > audits LOOP { CHECK; IF (TAG == "READY") { BREAK; } FIX; } UNTIL (TAG == "READY");'
       -> Program(guidance="Be concise.", hooks={"audits": [Loop(...)]})
+
+    '< outline RESEARCH;'  (before a step)  -> Program(..., before={"outline": [Run("RESEARCH")]})
 """
 
 from __future__ import annotations
@@ -50,7 +52,7 @@ class Continue:
 
 @dataclass
 class Stop:
-    pass
+    cancel: bool = False  # CANCEL: before a step, the step doesn't run either
 
 
 @dataclass
@@ -84,7 +86,8 @@ class Not:
 @dataclass
 class Program:
     guidance: str | None
-    hooks: dict[str, list]
+    hooks: dict[str, list]                                   # '> step': runs after the step
+    before: dict[str, list] = field(default_factory=dict)    # '< step': runs before the step
 
     def prompt_names(self) -> set[str]:
         names: set[str] = set()
@@ -99,7 +102,7 @@ class Program:
                     walk(s.then)
                     walk(s.else_)
 
-        for stmts in self.hooks.values():
+        for stmts in [*self.hooks.values(), *self.before.values()]:
             walk(stmts)
         return names
 
@@ -145,12 +148,14 @@ def _where(text: str, i: int) -> str:
 
 # ---------------------------------------------------------------- parser
 
-# '> audits' at the start or after a space, ';' or '}' (so 'score>8' in guidance isn't one).
-_HOOK_AT = re.compile(r"(?:^|(?<=[\s;}]))" + re.escape(keys.HOOK) + r"\s*([A-Za-z_]\w*)")
+# '> audits' / '< outline' at the start or after a space, ';' or '}' (so 'score>8' in
+# guidance isn't one). Only a step name after it counts.
+_HOOKS = (keys.HOOK, keys.HOOK_BEFORE)
+_HOOK_AT = re.compile(r"(?:^|(?<=[\s;}]))[" + re.escape("".join(_HOOKS)) + r"]\s*([A-Za-z_]\w*)")
 
 
 def split_guidance(text: str, steps) -> tuple[str | None, str]:
-    """(plain guidance before the first '> step', the rules program from there)."""
+    """(plain guidance before the first '> step' / '< step', the rules program from there)."""
     for m in _HOOK_AT.finditer(text):
         if m.group(1).lower() in steps:
             return (text[:m.start()].strip() or None), text[m.start():]
@@ -163,8 +168,8 @@ def parse(text: str | None, steps) -> Program:
     guidance, code = split_guidance(text, set(steps))
     if not code:
         return Program(guidance, {})
-    p = _Parser(code, set(steps))
-    return Program(guidance, p.program())
+    after, before = _Parser(code, set(steps)).program()
+    return Program(guidance, after, before)
 
 
 class _Parser:
@@ -204,29 +209,45 @@ class _Parser:
             self.take()
 
     # -- program
-    def program(self) -> dict[str, list]:
-        hooks: dict[str, list] = {}
+    def program(self) -> tuple[dict[str, list], dict[str, list]]:
+        """({step: statements after it}, {step: statements before it})."""
+        after: dict[str, list] = {}
+        before: dict[str, list] = {}
         while self.tok.kind != "end":
-            self.expect_op(keys.HOOK, "to start a hook like '> audits'")
-            if self.tok.kind != "ident" or self.tok.value.lower() not in self.steps:
-                self.fail(f"Expected a step name after '>' ({', '.join(sorted(self.steps))})")
-            step = self.take().value.lower()
-            if step in hooks:
-                self.fail(f"'> {step}' appears twice; put its rules together")
-            hooks[step] = self.statements(top=True)
-            if not hooks[step]:
-                self.fail(f"'> {step}' has no rules after it")
-        return hooks
+            if not self.op(*_HOOKS):
+                self.fail("Expected '> step' (after a step) or '< step' (before a step) to "
+                          "start the rules")
+            sym = self.take().value
+            hooks = after if sym == keys.HOOK else before
+            names = [self.hook_step(sym, hooks)]
+            # '> paraphrasing OR audits': the same rules for each of these steps.
+            while self.word("OR") or self.op(","):
+                self.take()
+                names.append(self.hook_step(sym, hooks, names))
+            stmts = self.statements(top=True)
+            if not stmts:
+                self.fail(f"'{sym} {' OR '.join(names)}' has no rules after it")
+            for step in names:
+                hooks[step] = stmts  # one list: the hook is shown once, as written
+        return after, before
+
+    def hook_step(self, sym: str, hooks: dict, taken=()) -> str:
+        if self.tok.kind != "ident" or self.tok.value.lower() not in self.steps:
+            self.fail(f"Expected a step name after '{sym}' ({', '.join(sorted(self.steps))})")
+        step = self.take().value.lower()
+        if step in hooks or step in taken:
+            self.fail(f"'{sym} {step}' appears twice; put its rules together")
+        return step
 
     def statements(self, top: bool = False) -> list:
         out = []
         while True:
             if self.tok.kind == "end" or self.op("}"):
                 break
-            if self.op(keys.HOOK):
+            if self.op(*_HOOKS):
                 if top:
                     break
-                self.fail("A '}' is missing before the next '>'")
+                self.fail(f"A '}}' is missing before the next '{self.tok.value}'")
             if self.op(";"):
                 self.take()
                 continue
@@ -266,7 +287,7 @@ class _Parser:
         elif w in keys.KEYWORDS:
             self.fail(f"{w} can't start a rule here")
         self.take()
-        if not self.op(";", "}") and self.tok.kind != "end" and not self.op(keys.HOOK):
+        if not self.op(";", "}") and self.tok.kind != "end" and not self.op(*_HOOKS):
             self.fail(f"Expected ';' after {w}")
         self.semicolon()
         return Run(w)

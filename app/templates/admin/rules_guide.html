@@ -46,6 +46,7 @@
                  "How to add Rules to a brand in the TSV: the keys you can use and how they run.",
                  icon="admin", aside="API key protected") }}
   {% include "admin/_tabs.html" %}
+  {% set ob, cb = '{' ~ '{', '}' ~ '}' %}
   <div class="mx-auto max-w-5xl px-6 py-10 sm:px-10">
 
   <!-- How it works -->
@@ -53,7 +54,7 @@
   <ol class="mt-4 grid gap-3 sm:grid-cols-2">
     {% for title, text in [
       ("Declare prompts", "In the Rule Prompts column, give each prompt a name: NAME = \"\"\" ... \"\"\"."),
-      ("Hook them to a step", "In the Rules column, > audits means: after the Audits step, run what follows."),
+      ("Hook them to a step", "In the Rules column, > audits means: after the Audits step, run what follows. < outline means: before the Outline step (it works before the first step too)."),
       ("Checks and fixes", "A prompt with a status line (STATUS - … or Title Satisfied: …) is a check: it sets TAG and RATING and keeps the script. Any other prompt is a fix: its code block becomes the new script."),
       ("The result", "When the rules end, the latest script is the step's final result and is used by the next step."),
     ] %}
@@ -98,7 +99,8 @@ Output the script in a code block. """</pre>
   <!-- Keys -->
   <h2 class="mt-10 text-lg font-semibold text-ink">Keys</h2>
   <div class="mt-4 grid gap-4">
-    {{ key_table("Statements", [(keys.HOOK ~ " step", "Run the statements that follow after that step (until the next " ~ keys.HOOK ~ ").")] + statements) }}
+    {{ key_table("Statements", [(keys.HOOK ~ " step", "Run the statements that follow after that step (until the next " ~ keys.HOOK ~ " or " ~ keys.HOOK_BEFORE ~ ")."),
+                                (keys.HOOK_BEFORE ~ " step", "Run them before that step, in the same conversation, just before its prompt is sent. Before the first step they start the conversation. Each rule prompt's result (its code block, else the whole answer) fills " ~ ob ~ " name " ~ cb ~ " in the step's prompt, e.g. RESEARCH → " ~ ob ~ " research " ~ cb ~ ".")] + statements) }}
     {{ key_table("Conditions: inside ( )", keys.RULE_OPERATORS.items() | list
                  + [('"text"', "Text in double quotes. Case and extra spaces don't matter."),
                     ("( … )", "Group conditions, e.g. (TAG == \"READY\" AND RATING >= 9) OR RUNS > 10")]) }}

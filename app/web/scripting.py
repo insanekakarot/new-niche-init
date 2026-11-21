@@ -148,6 +148,8 @@ def brand_view(key: str, brand: dict) -> dict:
             known = {i["name"] for i in items if i["kind"] != "prompt"}
             written = placeholders(text)
             placed = [n for w in written if (n := input_for(w, known))]
+            before = _rule_names(program.before.get(step, []))
+            from_rules = {n.lower() for n in before}
             out_steps.append({
                 "name": step,
                 "label": _label(step),
@@ -156,11 +158,20 @@ def brand_view(key: str, brand: dict) -> dict:
                 "fields": _step_fields(items, placed),
                 "prompt_inputs": [i for i in items if i["kind"] == "prompt"],
                 # {{name}} in the prompt that isn't one of this step's inputs: left as written.
-                "unknown_placeholders": [w for w in written if not input_for(w, known)],
+                "unknown_placeholders": [w for w in written if not input_for(w, known)
+                                         and w.lower() not in from_rules
+                                         and w not in keys.BUILTIN_PLACEHOLDERS],
+                # {{name}} filled with a built-in value ({{ used_entries }}, {{ words_range }}...).
+                "builtin_placeholders": [w for w in written if not input_for(w, known)
+                                         and w in keys.BUILTIN_PLACEHOLDERS],
+                # {{name}} filled by a rule prompt that runs before this step.
+                "rule_placeholders": [w for w in written if w.lower() in from_rules],
                 "uses_context": bool(CONTEXT_REF.search(text)),
                 "code_block": wants_code_block(text),
                 # The rule prompts that run after this step (Rules column), in order.
                 "rules_after": _rule_names(program.hooks.get(step, [])),
+                # ... and the ones that run before it ('< step').
+                "rules_before": before,
             })
             produced.setdefault(step, step)
             produced.setdefault(f"{step}_content", step)
@@ -234,7 +245,9 @@ def find_brand(key: str) -> tuple[dict, dict] | None:
 
 def build_step_prompt(*, brand: dict, view: dict, branch: dict, step: dict,
                       inputs: dict[str, str], language: str, project_name: str | None = None,
-                      continuing: bool = False, in_chat: dict[str, str] | None = None) -> str:
+                      continuing: bool = False, in_chat: dict[str, str] | None = None,
+                      rule_results: dict[str, str] | None = None,
+                      builtins: dict[str, str] | None = None) -> str:
     """The full request for one step: admin prompt + this run's inputs + run settings.
 
     `inputs`: this run's values, including any the server took from the project's saved
@@ -242,13 +255,24 @@ def build_step_prompt(*, brand: dict, view: dict, branch: dict, step: dict,
     `continuing`: the step is sent into the project's existing conversation.
     `in_chat`: inputs that conversation already has, so they aren't sent again:
     name -> where the model finds them ("your Outline step response from earlier ...").
+    `rule_results`: what the rules before this step ('< step') produced, by lower-case rule
+    prompt name; they fill {{ name }} too.
+    `builtins`: the built-in values ({{ used_entries }}, {{ words_range }}, ...), used for a
+    {{ name }} that is neither an input nor a rule result.
     """
     in_chat = in_chat or {}
+    rule_results = rule_results or {}
+    builtins = builtins or {}
     fields = {f["name"]: f for f in step["fields"]}
 
     def fill(m: re.Match) -> str:
         f = fields.get(input_for(m.group(1), fields) or "")
         if f is None:
+            ran = m.group(1).lower()
+            if ran in rule_results:
+                return rule_results[ran]
+            if builtins.get(m.group(1)):
+                return builtins[m.group(1)]
             return m.group(0)  # not an input of this step: leave it for the admin to fix
         value = (inputs.get(f["name"]) or "").strip()
         if value:
@@ -285,6 +309,10 @@ def build_step_prompt(*, brand: dict, view: dict, branch: dict, step: dict,
     if continuing:
         parts.append(f"- Project: {project_name}. This continues the same conversation: the "
                      "earlier steps of this project are above.")
+    if rule_results:
+        parts.append("- Just before this step, this conversation ran: "
+                     + ", ".join(n.upper() for n in rule_results)
+                     + ". Their answers are above; use them for this step.")
     if step.get("uses_context"):
         parts.append("- Text inside << >> in the task means: take it from this conversation "
                      "(the inputs and results of the earlier steps above). It isn't repeated here."
