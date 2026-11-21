@@ -1,12 +1,12 @@
 {# Admin sub-navigation: tabs on a hairline bar, log out on the right. Needs `active`. #}
 <div class="flex items-stretch justify-between border-b border-line px-6 sm:px-10">
-  <nav class="-mb-px flex gap-6 text-[14px] font-medium">
-    {% for key, href, label in [("dashboard", "/admin/scripts/dashboard", "Dashboard"), ("edit", "/admin/scripts/prompts/edit", "Upload TSV"), ("guide", "/admin/scripts/rules-guide", "Rules guide")] %}
+  <nav class="-mb-px flex min-w-0 gap-6 overflow-x-auto whitespace-nowrap text-[14px] font-medium">
+    {% for key, href, label in [("dashboard", "/admin/scripts/dashboard", "Dashboard"), ("edit", "/admin/scripts/prompts/edit", "Upload TSV"), ("entries", "/admin/scripts/entries", "Used entries"), ("guide", "/admin/scripts/rules-guide", "Rules guide")] %}
     <a href="{{ href }}"
        class="border-b-2 py-3.5 transition {% if active == key %}border-accent text-ink{% else %}border-transparent text-muted hover:text-ink{% endif %}">{{ label }}</a>
     {% endfor %}
   </nav>
-  <form method="post" action="/admin/logout" class="flex items-center">
-    <button class="text-[14px] text-muted transition hover:text-accent">Log out</button>
+  <form method="post" action="/admin/logout" class="flex flex-shrink-0 items-center pl-4">
+    <button class="whitespace-nowrap text-[14px] text-muted transition hover:text-accent">Log out</button>
   </form>
 </div>

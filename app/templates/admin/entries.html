@@ -1,0 +1,111 @@
+{% extends "site.html" %}
+{% from "_page.html" import page_header %}
+{% block title %}Used entries — Admin{% endblock %}
+{% set ob, cb = '{' ~ '{', '}' ~ '}' %}
+{% block content %}
+  {{ page_header("04", "Admin / Used entries", "Used", "entries.",
+                 "What each brand's videos already covered. " ~ ob ~ " used_entries " ~ cb ~ " in a prompt is filled with this list, so new videos don't repeat it.",
+                 icon="admin", live=true, aside="API key protected") }}
+  {% include "admin/_tabs.html" %}
+  <div class="px-6 py-10 sm:px-10">
+
+  {% if not brands %}
+    <p class="rounded-lg bg-card px-5 py-4 text-sm text-muted">No prompts config yet. <a href="/admin/scripts/prompts/edit" class="font-semibold text-accent hover:underline">Upload the TSV</a> first.</p>
+  {% else %}
+
+  <!-- Brands -->
+  <div class="label text-faint">Brand</div>
+  <div class="mt-2 flex flex-wrap gap-2">
+    {% for b in brands %}
+    <a href="?brand={{ b.key }}"
+       class="inline-flex items-center gap-2 rounded-full px-3.5 py-1.5 text-sm font-semibold transition {% if b.key == brand %}bg-accent text-white shadow-md{% else %}border border-line bg-paper text-ink hover:border-[#cfccc3]{% endif %}">
+      {{ b.name }}
+      <span class="text-xs font-medium {% if b.key == brand %}text-white/75{% else %}text-faint{% endif %}">{{ b.summary.unique }}</span>
+      {% if b.uses %}<span class="rounded-full px-1.5 text-[10px] font-medium {% if b.key == brand %}bg-white/20 text-white{% else %}bg-accent-tint text-accent{% endif %}" title="Its prompts use {{ ob }} used_entries {{ cb }}">used</span>{% endif %}
+    </a>
+    {% endfor %}
+  </div>
+
+  <!-- Summary -->
+  <div class="mt-6 grid gap-3 sm:grid-cols-3">
+    <div class="rounded-lg bg-accent-tint p-4 ring-1 ring-line">
+      <div class="label text-accent">Entries</div>
+      <div class="mt-1 text-sm font-semibold text-ink"><span id="s-unique">{{ summary.unique }}</span> different <span class="font-normal text-muted">· <span id="s-total">{{ summary.entries }}</span> listed in <span id="s-groups">{{ summary.groups }}</span> groups</span></div>
+    </div>
+    <div class="rounded-lg bg-accent-tint p-4 ring-1 ring-line">
+      <div class="label text-accent">Last saved</div>
+      <div class="mt-1 text-sm font-semibold text-ink">{{ summary.updated_at.replace('T', ' ')[:16] ~ ' UTC' if summary.updated_at else 'Not saved yet' }}</div>
+    </div>
+    <div class="min-w-0 rounded-lg bg-accent-tint p-4 ring-1 ring-line">
+      <div class="label text-accent">Stored in</div>
+      <code class="mt-1 block break-all text-[11px] leading-5 text-muted">{{ file }}</code>
+    </div>
+  </div>
+
+  <div class="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
+    <!-- Editor -->
+    <div class="min-w-0">
+      <div class="flex flex-wrap items-center justify-between gap-2">
+        <label for="text" class="text-sm font-semibold text-ink">Entries</label>
+        <label class="btn btn-secondary h-8 cursor-pointer px-3 text-xs">Load .txt<input id="txt" type="file" accept=".txt,text/plain" class="sr-only"></label>
+      </div>
+      <textarea id="text" rows="22" spellcheck="false"
+                class="mt-2 w-full resize-y rounded-lg border border-line bg-paper px-4 py-3 font-mono text-[12.5px] leading-6 text-ink focus:border-accent/50 focus:outline-none focus:ring-2 focus:ring-accent/15"
+                placeholder="# Title of a past video&#10;First entry it covered&#10;Second entry it covered">{{ text }}</textarea>
+      <p class="mt-1.5 text-xs leading-5 text-faint">One entry per line. <code># Title</code>, <code>Title:</code> or <code>DOCUMENT 1 — Title (6 entries)</code> starts a group (a past video). <code>Number 6 —</code>, bullets and numbering are dropped, so a Google Doc can be pasted as it is.</p>
+      <label for="source" class="mt-4 block text-sm font-semibold text-ink">Source <span class="font-normal text-faint">(optional, e.g. the Google Doc link)</span></label>
+      <input id="source" type="url" value="{{ source }}" class="mt-1.5 w-full rounded-lg border border-line bg-paper px-4 py-2.5 text-sm text-ink focus:border-accent/50 focus:outline-none focus:ring-2 focus:ring-accent/15">
+      <div class="mt-5 flex flex-wrap items-center gap-3">
+        <button id="save" type="button" class="btn btn-primary">Save</button>
+        <button id="preview" type="button" class="btn btn-secondary">Check</button>
+        <a href="/admin/scripts/entries.json" class="text-sm font-semibold text-muted transition hover:text-accent">Download JSON</a>
+        <span id="msg" class="text-sm"></span>
+      </div>
+    </div>
+
+    <!-- What the prompts get -->
+    <div class="min-w-0">
+      <div class="text-sm font-semibold text-ink">What {{ ob }} used_entries {{ cb }} becomes</div>
+      <p class="mt-1 text-xs text-faint">Every entry once (the same place in two videos is listed once), in this order.</p>
+      <pre id="value" class="mt-2 max-h-[34rem] overflow-auto whitespace-pre-wrap break-words rounded-lg border border-line bg-card px-4 py-3 font-mono text-[12px] leading-6 text-ink">{{ value }}</pre>
+    </div>
+  </div>
+  {% endif %}
+  </div>
+{% endblock %}
+{% block scripts %}
+{% if brands %}
+<script>
+  const BRAND = {{ brand | tojson }};
+  const $ = (id) => document.getElementById(id);
+  const msg = (text, tone) => { $('msg').className = 'text-sm ' + (tone || 'text-muted'); $('msg').textContent = text; };
+
+  async function send(dryRun) {
+    msg(dryRun ? 'Checking…' : 'Saving…');
+    let res, data = null;
+    try {
+      res = await fetch('/admin/scripts/entries' + (dryRun ? '?dry_run=true' : ''), {
+        method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ brand: BRAND, text: $('text').value, source: $('source').value }),
+      });
+      data = await res.json();
+    } catch { /* below */ }
+    if (res && res.status === 401) { location.href = '/admin/login?next=' + encodeURIComponent(location.pathname + location.search); return; }
+    if (!res || !res.ok) { msg((data && (typeof data.detail === 'string' ? data.detail : 'Check the text.')) || 'Lost connection to the server.', 'text-accent'); return; }
+    const s = data.summary;
+    $('s-unique').textContent = s.unique; $('s-total').textContent = s.entries; $('s-groups').textContent = s.groups;
+    $('value').textContent = data.value;
+    msg(dryRun ? `${s.unique} different entries found. Not saved yet.` : `✓ Saved: ${s.unique} different entries.`, dryRun ? 'text-muted' : 'text-emerald-700');
+    if (!dryRun) setTimeout(() => location.reload(), 700);
+  }
+  $('save').addEventListener('click', () => send(false));
+  $('preview').addEventListener('click', () => send(true));
+  $('txt').addEventListener('change', async (e) => {
+    const f = e.target.files[0]; e.target.value = '';
+    if (!f) return;
+    try { $('text').value = new TextDecoder('utf-8', { fatal: true }).decode(await f.arrayBuffer()).replace(/^﻿/, ''); send(true); }
+    catch { msg(`"${f.name}" isn't UTF-8 text.`, 'text-accent'); }
+  });
+</script>
+{% endif %}
+{% endblock %}

@@ -19,6 +19,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
 from app import rules
+from app.admin import used_entries
 from app.admin.scripts_config import STEP_COLUMNS
 from app.cli import CliError, run_cli
 from app.cli.config import get_cli_settings
@@ -105,6 +106,8 @@ def values_for(view: dict, step: dict, inputs: dict[str, str], project_name: str
         "brand_name": view.get("name") or "",
         "project_name": project_name,
         "step": step["label"],
+        # The brand's previously used entries (Admin → Used entries), one per line.
+        "used_entries": used_entries.value_for(view.get("key") or ""),
     }
     values.update({k: v for k, v in inputs.items() if isinstance(v, str) and v.strip()})
     return {k: v for k, v in values.items() if v}

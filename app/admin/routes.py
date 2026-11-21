@@ -2,9 +2,11 @@ import re
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
+from pydantic import BaseModel, Field
 
 from app import keys
 from app.admin import scripts_config as sc
+from app.admin import used_entries
 from app.admin.auth import (
     COOKIE_NAME,
     key_matches,
@@ -92,7 +94,9 @@ def _rules_views(config: list[dict]) -> dict[str, dict]:
             values = {"words_range": word_range(catalog.get("word_count")),
                       "word_count": catalog.get("word_count"),
                       "video_length": catalog.get("video_length"),
-                      "brand_name": brand.get("brand_name")}
+                      "brand_name": brand.get("brand_name"),
+                      "used_entries": "{unique} different entries (Admin → Used entries)".format(
+                          **used_entries.summary(key, used_entries.for_brand(key)))}
             view = explain.brand_rules(brand, sc.STEP_COLUMNS,
                                        {k: v for k, v in values.items() if v})
             if view:
@@ -129,6 +133,76 @@ def rules_guide(request: Request):
         {"active": "guide", "keys": keys, "featured": featured, "statements": statements,
          "examples": [e for e in examples if e is not featured]},
     )
+
+
+# ---------------------------------------------------------------- used entries
+
+class EntriesSave(BaseModel):
+    brand: str = Field(..., pattern=r"^[a-z0-9_]{1,80}$")
+    text: str = Field("", max_length=used_entries.MAX_TEXT)
+    source: str | None = Field(None, max_length=500)
+
+
+def _brands() -> list[dict]:
+    """Config brands, with whether their prompts use {{ used_entries }}."""
+    out = []
+    for entry in sc.load_config() or []:
+        for key, brand in entry.items():
+            texts = [*(brand.get("prompts") or {}).values(),
+                     *(brand.get("rule_prompts") or {}).values()]
+            uses = any("used_entries" in keys.PLACEHOLDER.findall(t or "") for t in texts)
+            out.append({"key": key, "name": brand.get("brand_name") or key, "uses": uses})
+    return out
+
+
+@router.get("/scripts/entries", response_class=HTMLResponse,
+            dependencies=[Depends(require_admin_page)])
+def entries_page(request: Request, brand: str | None = None):
+    try:
+        brands = _brands()
+    except (OSError, ValueError):
+        brands = []
+    stored = used_entries.load()["brands"]
+    for b in brands:
+        b["summary"] = used_entries.summary(b["key"], stored.get(b["key"]))
+    keys_ = [b["key"] for b in brands]
+    if brand not in keys_:
+        brand = next((b["key"] for b in brands if b["uses"] or b["summary"]["entries"]),
+                     keys_[0] if keys_ else None)
+    current = used_entries.for_brand(brand) if brand else None
+    groups = (current or {}).get("groups") or []
+    return templates.TemplateResponse(
+        request, "admin/entries.html",
+        {"active": "entries", "brands": brands, "brand": brand, "groups": groups,
+         "text": used_entries.to_text(groups), "source": (current or {}).get("source") or "",
+         "summary": used_entries.summary(brand, current) if brand else None,
+         "file": str(used_entries.path()), "value": used_entries.render(groups)},
+    )
+
+
+@router.post("/scripts/entries", dependencies=[Depends(require_admin_api)])
+def entries_save(req: EntriesSave, dry_run: bool = Query(False)):
+    if req.brand not in {b["key"] for b in _brands()}:
+        raise HTTPException(404, f"No brand {req.brand!r} in the prompts config.")
+    groups = used_entries.parse(req.text)
+    if req.text.strip() and not groups:
+        raise HTTPException(422, "No entries found in that text.")
+    if not dry_run:
+        try:
+            used_entries.save(req.brand, groups, source=(req.source or "").strip() or None)
+        except OSError as exc:
+            raise HTTPException(500, f"Couldn't write {used_entries.path()}: {exc}") from exc
+    stored = used_entries.for_brand(req.brand) if not dry_run else {"groups": groups}
+    return {"saved": not dry_run, "groups": groups, "summary": used_entries.summary(req.brand, stored),
+            "value": used_entries.render(groups)}
+
+
+@router.get("/scripts/entries.json", dependencies=[Depends(require_admin_api)])
+def entries_download():
+    path = used_entries.path()
+    if not path.is_file():
+        raise HTTPException(404, "No used entries saved yet.")
+    return FileResponse(path, media_type="application/json", filename=used_entries.FILENAME)
 
 
 @router.get("/scripts/prompts/edit", response_class=HTMLResponse,

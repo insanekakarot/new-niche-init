@@ -66,6 +66,7 @@ BUILTIN_PLACEHOLDERS: dict[str, str] = {
     "brand_name": "The brand's name, e.g. NBA Brand 2.",
     "project_name": "The project's name.",
     "step": "The step the rules run after, e.g. Audits.",
+    "used_entries": "The brand's previously used entries, one per line (Admin → Used entries).",
 }
 
 # ============================================================== Rule Prompts column
