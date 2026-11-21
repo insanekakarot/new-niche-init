@@ -10,6 +10,11 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8", "httpx>=0.27", "ruff>=0.6"]
+# The desktop window (python -m app.desktop): pywebview with the Qt backend.
+desktop = ["pywebview[qt]>=5.3"]
+
+[project.scripts]
+new-niche-desktop = "app.desktop:main"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

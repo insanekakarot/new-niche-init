@@ -47,6 +47,24 @@ python -m app.main            # http://localhost:1023 (PORT in .env), reloads on
 
 Or run it with uvicorn directly: `uvicorn app.main:app --host 0.0.0.0 --port 1023`.
 
+### As a desktop app (same pages, in their own window)
+
+```bash
+pip install -e ".[desktop]"      # once: pywebview with the Qt backend
+python -m app.desktop            # or: new-niche-desktop
+python -m app.desktop --path /admin/scripts/dashboard   # open another page first
+```
+
+If the web app is already running on `PORT`, the window uses it (both share the same projects).
+Otherwise the window starts its own server and stops it when you close the window. Logins and
+the page's saved choices (model, effort per step) are kept between runs. Result downloads ask
+where to save, and Drive links open in your browser.
+
+The Qt web engine needs a few system libraries. On Arch:
+`sudo pacman -S --needed nss alsa-lib xcb-util xcb-util-cursor xcb-util-wm xcb-util-image xcb-util-keysyms xcb-util-renderutil libxkbfile`
+(Debian/Ubuntu: `sudo apt install libnss3 libasound2 libxcb-cursor0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-render-util0 libxkbfile1`).
+On WSL, the window opens through WSLg (Windows 11).
+
 - Scripting tool: http://localhost:1023/scripting
 - Admin (upload the prompts TSV): http://localhost:1023/admin
 - Rules guide (keys for the Rules column): http://localhost:1023/admin/scripts/rules-guide
