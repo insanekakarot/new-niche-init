@@ -59,11 +59,9 @@ def placeholders(prompt: str | None) -> list[str]:
 
 
 def input_for(name: str, inputs: set[str] | dict) -> str | None:
-    """The step input a {{name}} stands for: itself, else its alias; None if neither."""
-    if name in inputs:
-        return name
-    alias = ALIASES.get(name)
-    return alias if alias in inputs else None
+    """The step input a {{name}} stands for: itself, else another name of the same input
+    (source_script / competitor_script / inspirational_script); None if none of them."""
+    return next((n for n in keys.same_input(name) if n in inputs), None)
 
 
 def _split_optional(raw: str) -> tuple[str, bool]:
@@ -72,7 +70,7 @@ def _split_optional(raw: str) -> tuple[str, bool]:
 
 
 def _label(name: str) -> str:
-    return name.replace("_", " ").strip().capitalize()
+    return keys.INPUT_LABELS.get(name) or name.replace("_", " ").strip().capitalize()
 
 
 def _field(name: str, optional: bool, condition: bool = False) -> dict:
@@ -81,7 +79,9 @@ def _field(name: str, optional: bool, condition: bool = False) -> dict:
         "label": _label(name),
         "optional": optional,
         "condition": condition,
-        "multiline": any(h in name for h in _MULTILINE_HINTS),
+        "multiline": any(h in name for h in _MULTILINE_HINTS) or name in keys.TRANSCRIPT_INPUTS,
+        # A video's transcript: the page can also take it from a video link.
+        "transcript": name in keys.TRANSCRIPT_INPUTS,
     }
 
 

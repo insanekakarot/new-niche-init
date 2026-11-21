@@ -425,7 +425,7 @@
             <label for="${esc(id)}" class="text-sm font-semibold text-ink">${esc(f.label)}</label>${badge}${from}
             <div class="ml-auto flex items-center gap-3">
               <span data-count="${esc(f.name)}" class="text-xs text-faint"></span>
-              <div class="inline-flex rounded-lg bg-accent-tint p-1 ring-1 ring-line">${tab('paste', 'Paste')}${tab('file', '.txt file')}${f.kind === 'generated' ? tab('saved', 'Saved') : ''}</div>
+              <div class="inline-flex rounded-lg bg-accent-tint p-1 ring-1 ring-line">${tab('paste', 'Paste')}${tab('file', '.txt file')}${f.transcript ? tab('video', 'Video') : ''}${f.kind === 'generated' ? tab('saved', 'Saved') : ''}</div>
             </div>
           </div>
           <div data-pane="paste" class="${mode === 'paste' ? '' : 'hidden'}">
@@ -441,6 +441,14 @@
             </label>
             <div data-file-info="${esc(f.name)}" class="mt-2 hidden"></div>
           </div>
+          ${f.transcript ? `<div data-pane="video" class="${mode === 'video' ? '' : 'hidden'}">
+            <div class="flex flex-col gap-2 sm:flex-row">
+              <input type="url" data-video-url="${esc(f.name)}" class="${inputCls}" placeholder="https://www.youtube.com/watch?v=…" autocomplete="off">
+              <button type="button" data-get-transcript="${esc(f.name)}" class="btn btn-primary btn-lg flex-shrink-0 justify-center whitespace-nowrap">Get transcript</button>
+            </div>
+            <p class="mt-1.5 text-xs leading-5 text-faint">Takes the video's own captions (YouTube and most video sites). The transcript goes into Paste, where you can check and edit it.</p>
+            <div data-video-info="${esc(f.name)}" class="mt-2 hidden"></div>
+          </div>` : ''}
           ${f.kind === 'generated' ? `<div data-pane="saved" class="${mode === 'saved' ? '' : 'hidden'}">
             <div data-saved-list="${esc(f.name)}" data-source="${esc(f.source)}" class="rounded-lg border border-line"></div>
           </div>` : ''}
@@ -449,6 +457,7 @@
     s.fields.forEach((f) => {
       document.getElementById(`f-${bi}-${si}-${f.name}`).value = state.values[f.name] || '';
       if (f.multiline) renderFileInfo(f.name);
+      if (f.transcript) renderVideoInfo(f.name);
       if ((state.modes[f.name] || 'paste') === 'saved') loadSavedList(f.name);
     });
     renderResult();
@@ -590,6 +599,70 @@
         <button type="button" data-clear-file="${esc(name)}" class="text-emerald-700 transition hover:text-accent">Remove</button>
       </span>`;
   }
+
+  // ---------- source script from a video link (its captions)
+  // state.videos[name] = { url, busy, error, info: {words, language, kind, title, source} }
+  state.videos = {};
+  function renderVideoInfo(name) {
+    const box = document.querySelector(`[data-video-info="${CSS.escape(name)}"]`);
+    const input = document.querySelector(`[data-video-url="${CSS.escape(name)}"]`);
+    const btn = document.querySelector(`[data-get-transcript="${CSS.escape(name)}"]`);
+    if (!box) return;
+    const v = state.videos[name] || {};
+    if (input && v.url && !input.value) input.value = v.url;
+    if (btn) {
+      btn.disabled = !!v.busy;
+      btn.innerHTML = v.busy ? `${spin} Getting…` : 'Get transcript';
+    }
+    if (v.error) {
+      box.className = 'mt-2 rounded-lg border border-line bg-accent-tint px-4 py-2.5 text-sm font-medium text-accent-dark fade-in';
+      box.textContent = v.error;
+    } else if (v.info) {
+      const i = v.info;
+      const edited = (state.values[name] || '') !== v.text;
+      box.className = 'mt-2 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2.5 fade-in';
+      box.innerHTML = `<span class="min-w-0 text-sm text-emerald-800">
+          <span class="font-semibold">✓ Transcript${i.title ? ` · ${esc(i.title)}` : ''}</span>
+          <span class="text-emerald-600"> · ${Number(i.words).toLocaleString()} words · ${esc(i.language)} ${esc(i.kind)}${edited ? ' · edited after loading' : ''}</span>
+        </span>
+        <button type="button" data-mode="paste" data-for="${esc(name)}" class="mode-btn text-xs font-semibold text-emerald-700 transition hover:text-accent">View / edit</button>`;
+    } else {
+      box.className = 'mt-2 hidden'; box.innerHTML = '';
+    }
+  }
+
+  async function getTranscript(name) {
+    const input = document.querySelector(`[data-video-url="${CSS.escape(name)}"]`);
+    const url = (input && input.value || '').trim();
+    const v = state.videos[name] = { url };
+    if (!/^https?:\/\//i.test(url)) { v.error = 'Paste the full video link, starting with https://'; return renderVideoInfo(name); }
+    v.busy = true; renderVideoInfo(name);
+    try {
+      const res = await fetch('/api/scripting/transcript', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url }),
+      });
+      let data = null;
+      try { data = await res.json(); } catch { /* not JSON */ }
+      if (!res.ok) throw new Error((data && (typeof data.detail === 'string' ? data.detail : data.detail && data.detail[0] && data.detail[0].msg)) || `Request failed (${res.status})`);
+      v.info = data; v.text = data.text;
+      delete state.files[name];
+      state.values[name] = data.text;
+      const el = fieldEl(name);
+      if (el) el.value = data.text;
+      renderFileInfo(name);
+    } catch (err) {
+      v.error = err.message === 'Failed to fetch' ? 'Lost connection to the server.' : err.message;
+    } finally {
+      v.busy = false;
+      if (state.videos[name] === v) renderVideoInfo(name);
+      refresh();
+    }
+  }
+
+  document.addEventListener('keydown', (e) => {
+    const input = e.target.closest && e.target.closest('[data-video-url]');
+    if (input && e.key === 'Enter') { e.preventDefault(); getTranscript(input.dataset.videoUrl); }
+  });
 
   function setMode(name, mode) {
     state.modes[name] = mode;
@@ -997,6 +1070,8 @@
     if (sf) { const r = state.results[resultKey()]; if (r) { r.showFull = sf.dataset.showFull === '1'; renderResult(); } return; }
     const mb = e.target.closest('.mode-btn');
     if (mb) { setMode(mb.dataset.for, mb.dataset.mode); return; }
+    const gt = e.target.closest('[data-get-transcript]');
+    if (gt) { getTranscript(gt.dataset.getTranscript); return; }
     const po = e.target.closest('.provider-opt');
     if (po) { chooseProvider(po.dataset.provider); closeAll(); return; }
     const pk = e.target.closest('[data-pick]');

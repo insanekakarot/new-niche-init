@@ -19,6 +19,9 @@ def rule_answer(prompt: str) -> str | None:
     if path and os.path.exists(path):
         with open(path, encoding="utf-8") as fh:
             counts = json.load(fh)
+    if re.search(r"NEXT MOVE\s*-", prompt):  # entries validation: FAKE_NEXT_MOVE (CONTINUE)
+        return (f"```\nRemaining Usable Entries: 6\nNEXT MOVE - "
+                f"{os.environ.get('FAKE_NEXT_MOVE', 'CONTINUE')}\n```")
     check = re.search(r"STATUS\s*-\s*[A-Z]", prompt) is not None
     key = "checks" if check else "revisions"
     counts[key] = counts.get(key, 0) + 1

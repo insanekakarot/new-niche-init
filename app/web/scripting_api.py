@@ -24,7 +24,7 @@ from app.cli import (
     run_cli,
 )
 from app.cli.config import PROVIDER_EFFORTS, get_cli_settings
-from app.web import extract, outputs, projects, rule_jobs
+from app.web import extract, outputs, projects, rule_jobs, transcripts
 from app.web.scripting import build_step_prompt, find_brand
 
 router = APIRouter(prefix="/api/scripting", tags=["scripting"])
@@ -478,6 +478,19 @@ def get_output(step: str, name: str, inline: bool = False, full: bool = False):
     if inline:
         return FileResponse(path, media_type="text/plain; charset=utf-8")
     return FileResponse(path, media_type="text/plain; charset=utf-8", filename=path.name)
+
+
+class TranscriptRequest(BaseModel):
+    url: str = Field(..., min_length=8, max_length=transcripts.MAX_URL)
+
+
+@router.post("/transcript")
+def video_transcript(req: TranscriptRequest):
+    """The transcript of a video link (its captions), for a source-script input."""
+    try:
+        return transcripts.fetch(req.url).public()
+    except transcripts.TranscriptError as exc:
+        raise HTTPException(422, str(exc)) from exc
 
 
 @router.get("/providers")

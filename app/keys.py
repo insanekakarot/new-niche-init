@@ -49,8 +49,26 @@ CONTENT_SUFFIX = "_content"  # outline_content = the Outline step's result (same
 
 # {{name}} -> that input's value. Spaces inside are fine: {{ words_range }}.
 PLACEHOLDER = re.compile(r"\{\{\s*([A-Za-z_]\w*)\s*\}\}")
-# Other names prompts use for an input.
-ALIASES: dict[str, str] = {"competitor_script": "inspirational_script"}
+# Names that mean the same input: the competitor's transcript is the source script (and the
+# inspirational script). {{ any of them }} is filled from whichever one the step has.
+SAME_INPUT: tuple[tuple[str, ...], ...] = (
+    ("source_script", "competitor_script", "inspirational_script"),
+)
+# name -> the other names of the same input
+ALIASES: dict[str, tuple[str, ...]] = {
+    n: tuple(o for o in group if o != n) for group in SAME_INPUT for n in group}
+
+
+def same_input(name: str) -> tuple[str, ...]:
+    """The name first, then the other names of the same input (if any)."""
+    return (name, *ALIASES.get(name, ()))
+
+
+# The label the page shows for an input (default: its name, e.g. "Video title").
+INPUT_LABELS: dict[str, str] = {"competitor_script": "Source script",
+                                "source_script": "Source script"}
+# Inputs that are a video's transcript: the page can also take them from a video link.
+TRANSCRIPT_INPUTS: frozenset[str] = frozenset(SAME_INPUT[0])
 # << Current Script >> -> left as written; the model takes it from the conversation.
 CONTEXT_REF = re.compile(r"<<[^<>\n]{1,200}>>")
 # A prompt showing a fence or naming a "code block"/"code panel": the result is the block.
@@ -75,18 +93,20 @@ BUILTIN_PLACEHOLDERS: dict[str, str] = {
 RULE_PROMPT = re.compile(r'([A-Za-z_]\w*)\s*=\s*"""(.*?)"""', re.DOTALL)
 
 # The label of a status line, before '-' or ':':  'STATUS - ...',  'Title Satisfied: True',
-# 'Satisfied: False'. Add a label here to make prompts that use it checks.
-STATUS_LABEL = r"\b(?:STATUS|(?:TITLE\s+)?SATISFIED)\s*[-–—:]\s*"
+# 'Satisfied: False', 'NEXT MOVE - CONTINUE'. Add a label here to make prompts that use it checks.
+STATUS_LABEL = r"\b(?:STATUS|(?:TITLE\s+)?SATISFIED|NEXT\s+MOVE)\s*[-–—:]\s*"
 # A rule prompt that defines a status line ("STATUS - READY FOR PRODUCTION", "Title Satisfied:
-# True") is a *check*: its answer sets TAG (and RATING) and the script stays as it is. Any
-# other rule prompt is a *revision*: the code block of its answer becomes the current script.
-CHECK_PROMPT = re.compile(STATUS_LABEL + r"[A-Z]", re.IGNORECASE)
+# True", "NEXT MOVE - [CONTINUE or RESEARCH]") is a *check*: its answer sets TAG (and RATING)
+# and the script stays as it is. Any other rule prompt is a *revision*: the code block of its
+# answer becomes the current script.
+CHECK_PROMPT = re.compile(STATUS_LABEL + r"\[?[A-Z]", re.IGNORECASE)
 # The tag in a check's answer: 'STATUS - NOT READY FOR PRODUCTION' -> 'NOT READY FOR PRODUCTION',
 # 'Title Satisfied: True' -> 'TRUE'.
-STATUS_LINE = re.compile(STATUS_LABEL + r"(?P<tag>[A-Za-z][A-Za-z ]*[A-Za-z])", re.IGNORECASE)
+STATUS_LINE = re.compile(STATUS_LABEL + r"\[?(?P<tag>[A-Za-z][A-Za-z ]*[A-Za-z])", re.IGNORECASE)
 # A check's tag that counts as a pass: 'READY FOR PRODUCTION', 'TRUE', 'YES', 'PASS', ...
 # (used for the green / amber status, not by the rules themselves: they compare TAG as written).
-PASS_TAG = re.compile(r"^(?:READY\b.*|TRUE|YES|PASS(?:ED)?|SATISFIED|APPROVED)$", re.IGNORECASE)
+PASS_TAG = re.compile(r"^(?:READY\b.*|TRUE|YES|PASS(?:ED)?|SATISFIED|APPROVED|CONTINUE)$",
+                      re.IGNORECASE)
 # The rating in a check's answer: 'Overall rating: 8.5/10' or 'Rating - 7'.
 RATING = re.compile(
     r"\brating\b[^0-9\n]{0,30}(?P<n>\d+(?:\.\d+)?)(?:\s*/\s*(?P<of>\d+))?"

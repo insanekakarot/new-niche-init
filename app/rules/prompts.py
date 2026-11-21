@@ -42,9 +42,9 @@ def fill(prompt: str, values: dict[str, str]) -> str:
     """Replace {{ name }} with the run's values; unknown names stay as written."""
     def sub(m):
         name = m.group(1)
-        value = values.get(name)
-        if value is None and name in keys.ALIASES:
-            value = values.get(keys.ALIASES[name])
+        # The name itself first, then its other names (source_script = competitor_script ...).
+        value = next((values[n] for n in keys.same_input(name)
+                      if isinstance(values.get(n), str) and values[n].strip()), None)
         return value.strip() if isinstance(value, str) and value.strip() else m.group(0)
 
     return keys.PLACEHOLDER.sub(sub, prompt)
