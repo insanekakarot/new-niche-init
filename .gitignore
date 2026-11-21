@@ -42,3 +42,8 @@ tests/_payload/INDEX.md
 Thumbs.db
 *.log
 *.swp
+
+
+# Tests code
+tests._niche
+new.text
