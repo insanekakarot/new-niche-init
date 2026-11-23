@@ -162,6 +162,62 @@ def split_guidance(text: str, steps) -> tuple[str | None, str]:
     return (text.strip() or None), ""
 
 
+_SAME_LINE = re.compile(r"\s*(?:ELSE|UNTIL)\b", re.IGNORECASE)
+
+
+def layout(code: str, indent: str = "    ") -> str:
+    """The rules program laid out for reading: one statement per line, indented by block,
+    '} ELSE' / '} UNTIL' on the closing line, a blank line between hooks. A sheet's TSV
+    export puts a multi-line cell on one line, so the saved text can't be shown as is."""
+    lines: list[str] = []
+    cur, depth, paren, i = "", 0, 0, 0
+
+    def flush():
+        nonlocal cur
+        if cur.strip():
+            lines.append(indent * depth + cur.strip())
+        cur = ""
+
+    while i < len(code):
+        c = code[i]
+        if c in "\"'":                                   # a string is copied as written
+            end = code.find(c, i + 1)
+            end = len(code) - 1 if end < 0 else end
+            cur += code[i:end + 1]
+            i = end + 1
+            continue
+        if c.isspace():
+            if cur and not cur.endswith(" "):
+                cur += " "
+        elif c in "()":
+            paren = paren + 1 if c == "(" else max(0, paren - 1)
+            cur += c
+        elif paren:
+            cur += c
+        elif c == "{":
+            cur = cur.rstrip() + " {"
+            flush()
+            depth += 1
+        elif c == ";":
+            cur = cur.rstrip() + ";"
+            flush()
+        elif c == "}":
+            flush()
+            depth = max(0, depth - 1)
+            cur = "} "
+            if not _SAME_LINE.match(code, i + 1):
+                flush()
+        elif depth == 0 and c in _HOOKS and not cur.strip():
+            if lines:
+                lines.append("")
+            cur = c
+        else:
+            cur += c
+        i += 1
+    flush()
+    return "\n".join(lines)
+
+
 def parse(text: str | None, steps) -> Program:
     """Parse a Rules cell. `steps`: the step names a '> step' hook may name."""
     text = (text or "").strip()

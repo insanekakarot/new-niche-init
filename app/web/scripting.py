@@ -185,9 +185,9 @@ def brand_view(key: str, brand: dict) -> dict:
         "name": brand.get("brand_name") or key,
         # Plain guidance (text before the first '> step'): added to every step prompt.
         "rules": program.guidance,
-        # The control part of the Rules column, shown as written.
-        "rules_program": rules.lang.split_guidance(brand.get("rules") or "",
-                                                   set(sc.STEP_COLUMNS))[1].strip() or None,
+        # The control part of the Rules column, laid out one statement per line.
+        "rules_program": rules.lang.layout(rules.lang.split_guidance(
+            brand.get("rules") or "", set(sc.STEP_COLUMNS))[1]) or None,
         "rules_error": rules_error,
         "fields": list(fields.values()),
         "branches": branches,

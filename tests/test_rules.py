@@ -263,7 +263,8 @@ def flow(**audit_overrides):
 
 def test_brand_view_shows_rules_after_audits(brand2):
     _, view = find_brand("brand_b")
-    assert view["rules"] is None and view["rules_program"].startswith("> audits LOOP")
+    assert view["rules"] is None and view["rules_program"].startswith("> audits LOOP {\n")
+    assert "\n    VALIDATION;\n" in view["rules_program"]     # one statement per line
     outline, _, audits = view["branches"][0]["steps"]
     assert audits["rules_after"] == ["VALIDATION", "REVISION"]
     assert outline["rules_after"] == []
@@ -744,3 +745,31 @@ def test_the_top10_paraphrasing_rules_file_works():
     before = next(r for r in view["runs"] if r["when"] == "before")
     assert [r["what"] for r in before["rows"]] == ["ENTRIES_CHECK #1", "Paraphrasing"]
     assert "CONTINUE" in before["rows"][0]["result"]
+
+
+def test_layout_puts_one_line_rules_back_on_lines():
+    from app.rules.lang import layout
+    # A sheet's TSV export puts a multi-line cell on one line.
+    flat = ('< script CHECK_A; IF (TAG == "STOP; NOW {x}") { STOP; }  '
+            '> audits OR script LOOP (MAX 4) {   VALIDATION;   IF (TAG == "APPROVED") '
+            '{ BREAK; } ELSE IF (ITERATION == 4) { STOP; } ELSE { REVISION; } } '
+            'UNTIL (TAG == "APPROVED");')
+    assert layout(flat) == (
+        '< script CHECK_A;\n'
+        'IF (TAG == "STOP; NOW {x}") {\n'        # ; { } inside a string stay as written
+        '    STOP;\n'
+        '}\n'
+        '\n'
+        '> audits OR script LOOP (MAX 4) {\n'
+        '    VALIDATION;\n'
+        '    IF (TAG == "APPROVED") {\n'
+        '        BREAK;\n'
+        '    } ELSE IF (ITERATION == 4) {\n'
+        '        STOP;\n'
+        '    } ELSE {\n'
+        '        REVISION;\n'
+        '    }\n'
+        '} UNTIL (TAG == "APPROVED");')
+    assert parse(layout(flat), STEPS) == parse(flat, STEPS)   # same rules, only laid out
+    assert layout(layout(flat)) == layout(flat)
+    assert layout("") == ""
