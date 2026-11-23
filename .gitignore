@@ -16,12 +16,15 @@ htmlcov/
 *.pem
 *.key
 
-# Private brand data: Drive folder links (start from app/brand_links.example.json)
+# Private brand data: the brands file (start from app/brands.example.json), wherever it is,
+# and the old Drive links file it replaced
+___brands.json
 app/brand_links.json
 *.local.json
 
 # Private notes
 PLAN.md
+CHANGELOG.md
 
 # Uploaded admin inputs (prompt TSVs) and the config built from them
 app/admin/inputs/
@@ -30,9 +33,10 @@ app/admin/configs/
 # Step results, projects and rule runs (scripts, prompts, CLI sessions)
 app/output/
 
-# Generated payload dumps (contain admin prompts and pasted scripts)
+# Generated payload dumps (contain admin prompts and pasted scripts) and the notes on them
 tests/_payload/*/
 tests/_payload/INDEX.md
+tests/_payload/README.md
 
 # Editors, OS and tools
 .vscode/
