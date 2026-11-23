@@ -822,7 +822,7 @@
 
   // A step's result becomes the input of the later steps that use it, unless the person
   // typed or loaded something else there (a result filled in this way is replaced next time).
-  // ---------- rules after a step ('> audits LOOP { STRICT_VALIDATION; ... }')
+  // ---------- rules after a step ('> audits LOOP { VALIDATION; ... }')
   const liveJob = (j) => j && (j.status === 'queued' || j.status === 'running');
   // The rules running in the project the next run would continue, if any.
   function runningJob() {
@@ -892,7 +892,7 @@
       const what = e.kind === 'check' ? 'check' : 'revision';
       const pass = e.iteration ? ` · pass ${e.iteration}` : '';
       let result = '';
-      if (e.status === 'running') result = `<span class="inline-flex items-center gap-1 text-muted">${spin} ${e.retry ? `connection failed, retry ${esc(e.retry)}…` : 'running…'}</span>`;
+      if (e.status === 'running') result = `<span class="inline-flex items-center gap-1 text-muted">${spin} ${e.offline ? `no connection to ${esc(e.offline)}, waiting to retry ${esc(e.retry || '')}…` : e.retry ? `connection failed, retry ${esc(e.retry)}…` : 'running…'}</span>`;
       else if (e.status === 'failed') result = '<span class="font-semibold text-accent">failed</span>';
       else if (e.kind === 'check') result = `${tagBadge(e.tag, e.passed)}${e.rating != null ? ` <span class="text-muted">· rating ${esc(e.rating)}</span>` : ''}`;
       else result = `<span class="text-emerald-700">new script · ${Number(e.words || 0).toLocaleString()} words</span>`;

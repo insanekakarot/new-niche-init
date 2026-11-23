@@ -131,6 +131,10 @@ class CodexCliSettings(BaseSettings):
     # Don't save one-off Codex sessions to disk. Project steps always keep theirs so the next
     # step can resume the same conversation.
     ephemeral: bool = True
+    # Run each request in its own process (`codex --no-daemon exec`) instead of through Codex's
+    # shared background server, which runs for days; a fresh process connects anew each time.
+    # Sessions still resume the same way.
+    no_daemon: bool = True
     # Codex has no system-prompt flag, so this is placed at the top of every prompt.
     system_prompt: str = DEFAULT_SYSTEM_PROMPT
     extra_args: str = ""

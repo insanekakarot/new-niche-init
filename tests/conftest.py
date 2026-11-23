@@ -16,6 +16,10 @@ async def _no_wait(_seconds):
     return None
 
 
+async def _online(_host):
+    return True
+
+
 @pytest.fixture(autouse=True)
 def isolated_storage(tmp_path, monkeypatch):
     """Never touch the real app/admin/inputs, app/output, the Z: drive or the real CLIs."""
@@ -32,6 +36,7 @@ def isolated_storage(tmp_path, monkeypatch):
     monkeypatch.delenv("FAKE_CLAUDE_MODE", raising=False)
     monkeypatch.delenv("FAKE_CODEX_MODE", raising=False)
     monkeypatch.setattr(app.cli, "_sleep", _no_wait)  # retries without the 3-5 s pauses
+    monkeypatch.setattr(app.cli, "_reachable", _online)  # never check the real network
     clear_settings_cache()
     yield
     clear_settings_cache()

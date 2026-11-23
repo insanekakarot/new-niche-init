@@ -10,6 +10,8 @@ from app import cli
 from app.cli import CliBusy, CliError, CliResult, CliTimeout, run_cli
 from app.main import app
 
+REAL_REACHABLE = cli._reachable  # before the autouse fixture replaces it
+
 ROUTING = ("Codex returned an error: Reconnecting... 5/5 (workspace routing discovery failed); "
            "workspace routing discovery failed")
 
@@ -90,6 +92,84 @@ def test_busy_keeps_its_type_after_retries(monkeypatch, waits):
     monkeypatch.setattr(cli, "_run_once", Flaky(99, CliBusy("2 Codex run(s) already in progress.")))
     with pytest.raises(CliBusy, match="still failing after 3 retries"):
         run()
+
+
+# ------------------------------------------------------------ waiting for the connection
+
+class Network:
+    """Stand-in for the connection check and the clock: offline for the first `down` checks."""
+
+    def __init__(self, monkeypatch, down):
+        self.down, self.checks, self.now, self.slept = down, [], 0.0, []
+        monkeypatch.setattr(cli, "_reachable", self.reachable)
+        monkeypatch.setattr(cli, "_sleep", self.sleep)
+        monkeypatch.setattr(cli, "_clock", lambda: self.now)
+
+    async def reachable(self, host):
+        self.checks.append(host)
+        return len(self.checks) > self.down
+
+    async def sleep(self, s):
+        self.slept.append(s)
+        self.now += s
+
+
+@pytest.mark.parametrize("message, lost", [
+    (ROUTING, True),
+    ("Codex returned an error: Connection failed: error sending request", True),
+    ("Claude returned an error: API Error: Connection error. (ECONNRESET)", True),
+    ("Codex returned an error: stream disconnected before completion", True),
+    ("Codex returned an error: usage limit reached", False),
+    ("2 Codex run(s) already in progress.", False),
+    ("Codex returned an error: 401 Unauthorized: connection failed", False),  # login: never
+])
+def test_which_errors_are_a_lost_connection(message, lost):
+    assert cli.connection_error(CliError(message)) is lost
+
+
+def test_a_lost_connection_waits_until_the_server_answers(monkeypatch):
+    net = Network(monkeypatch, down=3)  # chatgpt.com doesn't answer for 3 checks (30 s)
+    flaky = Flaky(1)
+    monkeypatch.setattr(cli, "_run_once", flaky)
+    seen = []
+    r = run(on_offline=lambda host, waited: seen.append((host, waited)))
+    assert r.text == "done" and r.retries == 1 and len(flaky.calls) == 2
+    assert net.checks == ["chatgpt.com"] * 4
+    assert net.slept == [3.0, 10.0, 10.0, 10.0]        # the 3 s pause, then checks 10 s apart
+    assert seen == [("chatgpt.com", 0.0), ("chatgpt.com", 10.0), ("chatgpt.com", 20.0)]
+
+
+def test_the_wait_for_the_connection_is_at_most_5_minutes_in_all(monkeypatch):
+    net = Network(monkeypatch, down=10**6)  # never comes back
+    flaky = Flaky(99)
+    monkeypatch.setattr(cli, "_run_once", flaky)
+    with pytest.raises(CliError, match=r"still failing after 3 retries; no connection to "
+                                       r"chatgpt\.com for 5 min"):
+        run()
+    assert len(flaky.calls) == 4                         # still only 3 retries
+    offline = sum(net.slept) - (3.0 + 4.0 + 5.0)
+    assert offline == cli.CONNECTION_WAIT_S == 300.0     # shared by all retries, not per retry
+
+
+def test_other_errors_dont_wait_for_the_connection(monkeypatch):
+    net = Network(monkeypatch, down=10**6)
+    monkeypatch.setattr(cli, "_run_once", Flaky(1, CliError("Codex returned an error: overloaded")))
+    assert run().retries == 1
+    assert net.checks == [] and net.slept == [3.0]
+
+
+def test_claude_waits_for_its_own_server(monkeypatch):
+    net = Network(monkeypatch, down=1)
+    monkeypatch.setattr(cli, "_run_once", Flaky(1, CliError("Connection error (ECONNRESET)")))
+    asyncio.run(run_cli("claude", "p"))
+    assert net.checks == ["api.anthropic.com"] * 2
+
+
+def test_the_connection_check_needs_a_valid_tls_handshake(monkeypatch):
+    # The real check (the autouse fixture swaps it out): no internet needed. Nothing valid
+    # answers on 127.0.0.1:443 (refused, or no certificate for that name), so it's offline.
+    monkeypatch.setattr(cli, "_CHECK_TIMEOUT_S", 2.0)
+    assert asyncio.run(REAL_REACHABLE("127.0.0.1")) is False
 
 
 # ------------------------------------------------------------ through a real step and rules

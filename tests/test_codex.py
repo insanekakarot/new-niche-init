@@ -52,7 +52,7 @@ def test_codex_settings_from_env(monkeypatch):
 def test_codex_command():
     cmd = build_command(CodexCliSettings(_env_file=None, bin="codex", extra_args="--oss"),
                         Path("/tmp/w"))
-    assert cmd[:2] == ["codex", "exec"]
+    assert cmd[:3] == ["codex", "--no-daemon", "exec"]  # its own process, not the daemon
     assert cmd[cmd.index("--model") + 1] == "gpt-5.6-sol"
     assert "model_reasoning_effort=medium" in cmd and "web_search=live" in cmd
     assert cmd[cmd.index("--sandbox") + 1] == "read-only"
@@ -61,6 +61,15 @@ def test_codex_command():
     assert {"--json", "--skip-git-repo-check", "--ephemeral", "--ignore-user-config",
             "--ignore-rules", "--oss"} <= set(cmd)
     assert cmd[-1] == "-"
+
+
+def test_codex_command_with_daemon_and_resume():
+    s = CodexCliSettings(_env_file=None, bin="codex", no_daemon=False)
+    cmd = build_command(s, Path("/tmp/w"), resume="t1")
+    assert cmd[:2] == ["codex", "exec"] and "--no-daemon" not in cmd
+    assert cmd[-3:] == ["resume", "t1", "-"] and "--ephemeral" not in cmd
+    cmd = build_command(CodexCliSettings(_env_file=None, bin="codex"), Path("/tmp/w"), resume="t1")
+    assert cmd[:3] == ["codex", "--no-daemon", "exec"] and cmd[-3:] == ["resume", "t1", "-"]
 
 
 def test_parse_events():

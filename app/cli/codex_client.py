@@ -7,6 +7,9 @@ the token usage and any error.
 `resume=<thread id>` continues an earlier conversation (`codex exec resume <id>`), so the
 model keeps the full context of the previous steps. A project passes its own `workdir` so
 every step runs in the same folder; one-off runs get a temp folder that is deleted after.
+
+Each run is its own process (`codex --no-daemon exec`), not a request to Codex's shared
+background server, whose connection can go stale (CODEX_CLI_NO_DAEMON=false to use it).
 """
 
 from __future__ import annotations
@@ -25,7 +28,7 @@ LAST_MESSAGE_FILE = "last_message.txt"
 def build_command(s: CodexCliSettings, workdir: Path, resume: str | None = None,
                   keep_session: bool = False) -> list[str]:
     """`resume` continues that thread; `keep_session` saves the session so it can be resumed."""
-    cmd = [*shlex.split(s.bin), "exec",
+    cmd = [*shlex.split(s.bin), *(["--no-daemon"] if s.no_daemon else []), "exec",
            "--model", s.model,
            "-c", f"model_reasoning_effort={s.reasoning_effort}",
            "-c", f"web_search={s.web_search}",

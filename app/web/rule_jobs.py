@@ -90,7 +90,7 @@ def active(project_id: str) -> Job | None:
 
 
 def word_range(word_count: str | None) -> str:
-    """'1,600–2,000 words' -> '1,600–2,000'"""
+    """'1,200–1,500 words' -> '1,200–1,500'"""
     return re.sub(r"\s*words?\s*$", "", word_count or "", flags=re.IGNORECASE).strip()
 
 
@@ -163,10 +163,17 @@ def _caller(job: Job, folder, rule_prompts: dict[str, str]):
         def retrying(n: int, total: int, exc: CliError, wait: float) -> None:
             # Shown on the page while it waits: "retry 1/3".
             entry.update(retry=f"{n}/{total}", retry_error=str(exc)[:300])
+            entry.pop("offline", None)
+
+        def offline(host: str, waited: float) -> None:
+            # "no connection to chatgpt.com, waiting (1 min)" until it answers again.
+            entry["offline"] = f"{host} · {int(waited // 60)} min {int(waited % 60)} s"
 
         result = await run_cli(job.provider, prompt, effort, resume=job.session_id,
-                               workdir=workdir, keep_session=True, on_retry=retrying)
+                               workdir=workdir, keep_session=True, on_retry=retrying,
+                               on_offline=offline)
         entry.pop("retry", None)
+        entry.pop("offline", None)
         job.session_id = result.session_id or job.session_id
         job.model, job.effort = result.model, result.effort
         projects.update_session(job.project_id, job.session_id)
