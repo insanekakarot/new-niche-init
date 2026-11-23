@@ -1,8 +1,9 @@
 # new-niche-overall
 
-A FastAPI app for writing video scripts step by step (Outline → Script → Audits …) with the
-Claude or Codex CLI. Brand prompts come from a TSV uploaded in the admin panel, and each
-brand's Rules can loop checks and fixes after a step.
+A FastAPI app for writing scripts step by step with the Claude or Codex CLI. Each brand's
+steps and prompts come from a TSV uploaded in the admin panel, and its Rules can run checks
+and fixes before or after a step. Brand profiles and the system prompt live in one private
+file, outside the repo.
 
 ## Requirements (Linux)
 
@@ -23,7 +24,8 @@ source .venv/bin/activate
 pip install -e ".[dev]"
 
 cp .env.example .env
-cp app/brand_links.example.json app/brand_links.json   # optional: brand Drive folders
+mkdir -p app/admin/configs
+cp app/brands.example.json app/admin/configs/___brands.json   # then put your brands in it
 ```
 
 Then edit `.env`:
@@ -35,8 +37,25 @@ Then edit `.env`:
 - `SCRIPTS_CONFIG_DIR` (optional): a shared folder for the prompts config. By default it is
   kept in `app/admin/configs/_scripts`.
 
-`.env`, `app/brand_links.json`, uploaded TSVs and everything in `app/output/` stay on your
-machine. They are in `.gitignore`.
+### The brands file (`___brands.json`)
+
+One private JSON file holds everything about the brands. It sits in the admin configs folder,
+the folder above `SCRIPTS_CONFIG_DIR` (default `app/admin/configs/___brands.json`; set
+`BRANDS_FILE` for another path). Changes show up without a restart.
+
+| Key | What |
+|---|---|
+| `brands` | One entry per brand: `slug`, `name`, `languages`, `video_length`, `word_count`, `production`, `drive_url`, `notes` |
+| `brands[].enabled` | `false` hides the brand on every page and in the API (default `true`) |
+| `brands[].config_keys` | The TSV brands it is, by key (`Brand A` in the TSV → `brand_a`): their word and length targets come from here |
+| `system_prompt` | The instructions sent with every Claude and Codex run: a string, or a list of lines |
+| `tools` | Optional tool texts for the home page: `{"scripting": {"description": "..."}}`; `{brands}` and `{languages}` are filled in |
+
+Without the file the app runs with no brand profiles and a neutral built-in system prompt.
+`app/brands.example.json` shows every key.
+
+`.env`, the brands file, uploaded TSVs, the prompts config and everything in `app/output/` stay
+on your machine. They are in `.gitignore`.
 
 ## Run
 
@@ -104,6 +123,7 @@ ruff check app tests
 |---|---|
 | `app/keys.py` | Every symbol the TSV understands (steps, inputs, `{{ }}`, Rules keywords) |
 | `app/rules/` | The Rules language: parser, engine, line-by-line explanation |
+| `app/brands_file.py` | Reads the private brands file (`___brands.json`) |
 | `app/web/` | Scripting page API, projects (CLI sessions), rule jobs, brand catalog |
 | `app/admin/` | Admin panel: TSV upload, dashboard, rules guide |
 | `app/cli/` | Claude and Codex CLI clients and their settings |
