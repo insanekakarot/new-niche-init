@@ -5,7 +5,7 @@ TSV columns (one row per brand):
     Rule Prompts (optional) | Inputs
 
 Output (__scripts.prompt.json) is a list with one object per brand:
-    [{"nba_brand_1": {"brand_name": ..., "prompts": {...}, "steps": [...],
+    [{"brand_a": {"brand_name": ..., "prompts": {...}, "steps": [...],
                       "rules": ..., "rule_prompts": {NAME: prompt}, "inputs": {...}}}, ...]
 
 `rules` is kept as written; it is checked here (app/rules/lang.py) so a mistake shows up on
@@ -78,7 +78,7 @@ def config_path() -> Path:
 # ---------------------------------------------------------------- parsing
 
 def brand_key(name: str) -> str:
-    """'NBA Brand 1' -> 'nba_brand_1'."""
+    """'Brand A' -> 'brand_a'."""
     return re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_")
 
 

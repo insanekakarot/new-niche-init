@@ -29,7 +29,7 @@ def _operand(node) -> str:
 
 
 def cond_code(c, nested: bool = False) -> str:
-    """The condition as it is written: TAG == "READY FOR PRODUCTION"."""
+    """The condition as it is written: TAG == "APPROVED"."""
     if isinstance(c, lang.BoolOp):
         text = f" {c.op} ".join(cond_code(i, nested=True) for i in c.items)
         return f"({text})" if nested else text
@@ -45,7 +45,7 @@ _SAYS = {"==": "is", "!=": "is not", ">": "is more than", ">=": "is at least",
 
 
 def cond_words(c) -> str:
-    """The condition in words: TAG is "READY FOR PRODUCTION"."""
+    """The condition in words: TAG is "APPROVED"."""
     if isinstance(c, lang.BoolOp):
         return f" {c.op.lower()} ".join(cond_words(i) for i in c.items)
     if isinstance(c, lang.Not):
@@ -248,14 +248,14 @@ def pass_fail_tags(prompt: str, literals: list[str]) -> tuple[str, str]:
     """The pass and fail tags a check prompt asks for, e.g. ("TRUE", "FALSE").
 
     The pass tag is the first TAG text of the rules that the prompt writes as 'STATUS - X'
-    (or, failing that, mentions at all); "READY FOR PRODUCTION" if there's none.
+    (or, failing that, mentions at all); "APPROVED" if there's none.
     """
     text = " ".join(prompt.upper().split())
     passing = [t for t in literals if not t.startswith("NOT ") and t not in _OPPOSITE.values()]
     good = (next((t for t in passing if re.search(rf"{keys.STATUS_LABEL}{re.escape(t)}\b", text)),
                  None)
             or next((t for t in passing if re.search(rf"\b{re.escape(t)}\b", text)), None)
-            or "READY FOR PRODUCTION")
+            or "APPROVED")
     return good, _OPPOSITE.get(good, f"NOT {good}")
 
 
@@ -307,7 +307,7 @@ def example_run(stmts: list, prompts: dict[str, str], step: str, ready_at: int =
                       "that (" + ", ".join(f"{n}: {g} / {b}" for n, (g, b) in zip(names, tags))
                       + "):")
     else:
-        good, bad = tags[0] if tags else ("READY FOR PRODUCTION", "NOT READY FOR PRODUCTION")
+        good, bad = tags[0] if tags else ("APPROVED", "NOT APPROVED")
         assumption = f"Sample run, if the {nth} check says {good} and any earlier one says {bad}:"
     return {
         "assumption": assumption,

@@ -30,7 +30,7 @@ def rule_answer(prompt: str) -> str | None:
             json.dump(counts, fh)
     if check:
         ready = counts[key] >= int(os.environ.get("FAKE_READY_AT", "2"))
-        status = "READY FOR PRODUCTION" if ready else "NOT READY FOR PRODUCTION"
+        status = "APPROVED" if ready else "NOT APPROVED"
         rating = "9.1" if ready else "7.4"
         return (f"```\nOverall rating: {rating}/10\nSTATUS - {status}\n```\n\n"
                 f"Checked {m.group(1)}. Fixes: tighten the intro.")

@@ -104,7 +104,7 @@ def _rules_views(config: list[dict]) -> dict[str, dict]:
     return views
 
 
-_CHECK_WORDS = ("VALIDATION", "CHECK", "SATISFACTION", "REVIEW")
+_CHECK_WORDS = ("VALIDATION", "CHECK", "REVIEW")
 
 
 def _example_rows(text: str) -> dict:
@@ -112,7 +112,7 @@ def _example_rows(text: str) -> dict:
     program = lang.parse(text, sc.STEP_COLUMNS)
     names = program.prompt_names()
     # Example names only: ones that read like checks are shown as checks.
-    prompts = {n: "STATUS - READY" if any(w in n for w in _CHECK_WORDS) else "Fix it."
+    prompts = {n: "STATUS - APPROVED" if any(w in n for w in _CHECK_WORDS) else "Fix it."
                for n in names}
     return {"guidance": program.guidance,
             "lines": [{**line, "segments": explain.segments(line["code"], names)}
@@ -123,7 +123,7 @@ def _example_rows(text: str) -> dict:
             dependencies=[Depends(require_admin_page)])
 def rules_guide(request: Request):
     examples = [{"about": about, **_example_rows(text)} for about, text in keys.RULE_EXAMPLES]
-    featured = next((e for e in examples if "TITLE_SATISFACTION" in str(e["lines"])), examples[0])
+    featured = next((e for e in examples if "TITLE_CHECK" in str(e["lines"])), examples[0])
     numbers = {"DEFAULT_MAX_LOOP": str(keys.DEFAULT_MAX_LOOP),
                "HARD_MAX_LOOP": str(keys.HARD_MAX_LOOP)}
     statements = [(key, re.sub("|".join(numbers), lambda m: numbers[m.group()], about))

@@ -14,7 +14,7 @@ Stored at <output_dir>/_projects/<id>/project.json:
 
 `steps[].file` is the step's saved result (app/output/<step>/<file>): for a code-block prompt,
 just the code block. Later steps read it to fill in `{{name}}` in their prompt.
-`inputs` records the typed-in inputs (video title, competitor script, ...) already sent in
+`inputs` records the typed-in inputs (video title, source script, ...) already sent in
 this conversation, so later steps don't send them again.
 
 Codex projects also get a fixed working folder, <id>/workdir, so every step runs in the

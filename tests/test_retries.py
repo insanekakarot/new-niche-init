@@ -201,7 +201,7 @@ def _setup_config():
 def test_rule_prompt_retries_show_on_the_page(monkeypatch, waits, tmp_path):
     from app.admin import scripts_config as sc
     from tests import test_rules as tr
-    cfg = sc.parse_tsv(tr.tsv([tr.NBA2_ROW])).config
+    cfg = sc.parse_tsv(tr.tsv([tr.BRAND_B_ROW])).config
     sc.config_path().parent.mkdir(parents=True, exist_ok=True)
     sc.config_path().write_text(json.dumps(cfg), encoding="utf-8")
     monkeypatch.setenv("FAKE_CLAUDE_MODE", "codeblock")
@@ -210,7 +210,7 @@ def test_rule_prompt_retries_show_on_the_page(monkeypatch, waits, tmp_path):
     state = {"n": 0}
 
     async def flaky_once(provider, prompt, *a, **kw):
-        if prompt.startswith("# Rule: APPLY_CHANGES") and state["n"] == 0:
+        if prompt.startswith("# Rule: REVISION") and state["n"] == 0:
             state["n"] += 1
             raise CliError(ROUTING)
         return await real(provider, prompt, *a, **kw)
@@ -218,6 +218,6 @@ def test_rule_prompt_retries_show_on_the_page(monkeypatch, waits, tmp_path):
     audits = tr.flow()
     done = TestClient(app).get(f"/api/scripting/rules/{audits['rules']['id']}").json()
     assert done["status"] == "done", done
-    apply = next(e for e in done["log"] if e["name"] == "APPLY_CHANGES")
+    apply = next(e for e in done["log"] if e["name"] == "REVISION")
     assert apply["retries"] == 1 and "retry" not in apply
     assert done["final"]["text"].startswith("REVISED SCRIPT")

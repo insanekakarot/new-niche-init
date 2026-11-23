@@ -57,7 +57,7 @@ def parse_tag(text: str) -> str:
 
 
 def passed(tag: str) -> bool:
-    """Whether a check's tag is a pass (READY FOR PRODUCTION, TRUE, YES, ...)."""
+    """Whether a check's tag is a pass (APPROVED, TRUE, YES, ...)."""
     return bool(tag) and bool(keys.PASS_TAG.match(tag.strip()))
 
 

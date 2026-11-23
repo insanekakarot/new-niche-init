@@ -20,7 +20,7 @@ import tempfile
 from pathlib import Path
 
 from app.cli.common import CliError, CliResult, run_process, run_slot, tail
-from app.cli.config import CodexCliSettings, get_codex_settings
+from app.cli.config import CodexCliSettings, get_codex_settings, system_prompt_for
 
 LAST_MESSAGE_FILE = "last_message.txt"
 
@@ -53,9 +53,8 @@ def build_command(s: CodexCliSettings, workdir: Path, resume: str | None = None,
 
 
 def with_instructions(prompt: str, s: CodexCliSettings) -> str:
-    if not s.system_prompt.strip():
-        return prompt
-    return f"# Instructions\n{s.system_prompt.strip()}\n\n{prompt}"
+    system = system_prompt_for(s).strip()
+    return f"# Instructions\n{system}\n\n{prompt}" if system else prompt
 
 
 def parse_events(stdout: bytes) -> dict:
@@ -126,7 +125,8 @@ def build_payload(prompt: str, settings: CodexCliSettings | None = None,
     return {"provider": "codex",
             "argv": build_command(s, workdir or Path("<temp-dir>"), resume, keep_session),
             "stdin": with_instructions(prompt, s), "resume": resume,
-            "system_prompt": s.system_prompt, "system_prompt_via": "top of stdin (# Instructions)"}
+            "system_prompt": system_prompt_for(s),
+            "system_prompt_via": "top of stdin (# Instructions)"}
 
 
 async def _run_in(workdir: Path, prompt: str, s: CodexCliSettings, resume: str | None,

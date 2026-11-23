@@ -12,11 +12,11 @@ HEADER = {"X-API-Key": KEY}
 COLS = "Research\tOutline\tScript\tAudits\tParaphrasing\tBrand\tSteps\tRules\tInputs"
 TSV = "\r\n".join([
     COLS,
-    "\tOutline P\tScript P\tAudit P\t\tNBA Brand 1\tOutline + Script + Audits\t\t"
-    "outline = video_title + inspirational_script + player_name(optional) + outline_prompt "
+    "\tOutline P\tScript P\tAudit P\t\tBrand A\tOutline + Script + Audits\t\t"
+    "outline = video_title + inspirational_script + guest_name(optional) + outline_prompt "
     "script = video_title + outline + script_prompt audits = video_title + audits_prompt + script",
-    "\t\tScript only\t\t\tA Brand 1\tScript\t\tscript = video_title + inspirational_script + script_prompt",
-    "R P\tO P\tS P\tA P\tPara P\tT Brand 1\t"
+    "\t\tScript only\t\t\tBrand C\tScript\t\tscript = video_title + inspirational_script + script_prompt",
+    "R P\tO P\tS P\tA P\tPara P\tBrand D\t"
     "if (!competitor_script) {   Research + Outline + Script + Audits }  else {   Paraphrasing }\t\t"
     "research = video_title + research_prompt outline = video_title + research_content + outline_prompt "
     "script = video_title + outline_content + script_prompt audits = video_title + script + audits_prompt",
@@ -41,19 +41,19 @@ def upload(client, data=TSV, name="config.tsv", dry_run=False, headers=HEADER):
 
 def test_parse_brands_prompts_steps_inputs():
     result = sc.parse_tsv(TSV)
-    assert result.brands == ["nba_brand_1", "a_brand_1", "t_brand_1"]
+    assert result.brands == ["brand_a", "brand_c", "brand_d"]
 
-    nba = result.config[0]["nba_brand_1"]
-    assert nba["brand_name"] == "NBA Brand 1"
-    assert nba["prompts"] == {"research": None, "outline": "Outline P", "script": "Script P",
+    brand = result.config[0]["brand_a"]
+    assert brand["brand_name"] == "Brand A"
+    assert brand["prompts"] == {"research": None, "outline": "Outline P", "script": "Script P",
                               "audits": "Audit P", "paraphrasing": None}
-    assert nba["steps"] == [{"condition": None, "run": ["outline", "script", "audits"]}]
-    assert nba["inputs"]["outline"] == [
-        "video_title", "inspirational_script", "player_name(optional)", "outline_prompt"]
-    assert nba["inputs"]["audits"] == ["video_title", "audits_prompt", "script"]
-    assert nba["rules"] is None
+    assert brand["steps"] == [{"condition": None, "run": ["outline", "script", "audits"]}]
+    assert brand["inputs"]["outline"] == [
+        "video_title", "inspirational_script", "guest_name(optional)", "outline_prompt"]
+    assert brand["inputs"]["audits"] == ["video_title", "audits_prompt", "script"]
+    assert brand["rules"] is None
 
-    t = result.config[2]["t_brand_1"]
+    t = result.config[2]["brand_d"]
     assert t["steps"] == [
         {"condition": "!competitor_script", "run": ["research", "outline", "script", "audits"]},
         {"condition": "competitor_script", "run": ["paraphrasing"]},
@@ -63,7 +63,7 @@ def test_parse_brands_prompts_steps_inputs():
 
 def test_parse_warns_about_gaps():
     warnings = sc.parse_tsv(TSV).warnings
-    assert "T Brand 1: step 'paraphrasing' runs but has no inputs listed." in warnings
+    assert "Brand D: step 'paraphrasing' runs but has no inputs listed." in warnings
 
 
 @pytest.mark.parametrize("bad, message", [
@@ -126,7 +126,7 @@ def test_dry_run_saves_nothing(client):
 def test_upload_writes_tsv_and_json(client):
     r = upload(client, name="New Niche Overall - Scripting Prompts Config.tsv")
     assert r.status_code == 200, r.text
-    assert r.json()["brands"] == ["nba_brand_1", "a_brand_1", "t_brand_1"]
+    assert r.json()["brands"] == ["brand_a", "brand_c", "brand_d"]
 
     assert sc.tsv_path().name == "__script_prompts.tsv"
     assert sc.tsv_path().parent.parts[-3:] == ("admin", "inputs", "tsv")
@@ -139,7 +139,7 @@ def test_upload_writes_tsv_and_json(client):
     page = client.get("/admin/scripts/dashboard", headers=HEADER)
     assert page.status_code == 200
     assert "Config matches TSV" in page.text
-    for name in ("NBA Brand 1", "A Brand 1", "T Brand 1"):
+    for name in ("Brand A", "Brand C", "Brand D"):
         assert name in page.text
 
     dl = client.get("/admin/scripts/prompts.json", headers=HEADER)

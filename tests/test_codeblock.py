@@ -1,4 +1,4 @@
-"""Code-block results, {{name}} placeholders and << >> context markers (nba_brand_2 style)."""
+"""Code-block results, {{name}} placeholders and << >> context markers (brand_b style)."""
 
 import json
 
@@ -15,24 +15,24 @@ from tests.test_admin import TSV
 
 client = TestClient(app)
 TITLE = "Durant drops 25"
-COMPETITOR = "COMPETITOR SCRIPT TEXT " * 20
+SOURCE = "SOURCE SCRIPT TEXT " * 20
 FENCE = "```"
 
 PROMPTS = {
     "research": None,
-    "outline": ("Outline task for {{video_title}}. Competitor scripts: {{competitor_script}}. "
+    "outline": ("Outline task for {{video_title}}. Source scripts: {{competitor_script}}. "
                 f"Put the recommended outline inside a Markdown code block:\n{FENCE}\n"
                 f"[Actual complete recommended outline]\n{FENCE}"),
     "script": ('Script task. APPROVED OUTLINE: """ {{outline}} """ '
                "Write the script inside a single Markdown code block."),
-    "audits": ('Audit task. Outline """ << Used For Script Generation >> """ '
+    "audits": ('Audit task. Outline """ << Outline used for the script >> """ '
                'Script """ << Current Script >> """ '
-               'Competitor """ << Used in outline generation >> """ '
+               'Source """ << Source used for the outline >> """ '
                "Final script inside a single Markdown code block."),
     "paraphrasing": None,
 }
-BRAND2 = {"nba_brand_2": {
-    "brand_name": "NBA Brand 2",
+BRAND2 = {"brand_b": {
+    "brand_name": "Brand B",
     "prompts": PROMPTS,
     "steps": [{"condition": None, "run": ["outline", "script", "audits"]}],
     "rules": None,
@@ -54,11 +54,11 @@ def config(monkeypatch):
     return cfg
 
 
-def run(step="outline", inputs=None, brand="nba_brand_2", **overrides):
+def run(step="outline", inputs=None, brand="brand_b", **overrides):
     defaults = {
-        "outline": {"video_title": TITLE, "inspirational_script": COMPETITOR},
+        "outline": {"video_title": TITLE, "inspirational_script": SOURCE},
         "script": {"video_title": TITLE},
-        "audits": {"video_title": TITLE, "inspirational_script": COMPETITOR},
+        "audits": {"video_title": TITLE, "inspirational_script": SOURCE},
     }
     body = {"brand": brand, "branch": 0, "step": step, "language": "English",
             "inputs": defaults[step] if inputs is None else inputs}
@@ -108,7 +108,7 @@ def test_wants_code_block():
 # ------------------------------------------------------------ brand view
 
 def test_brand_view_marks_placeholders_context_and_code_blocks():
-    _, view = find_brand("nba_brand_2")
+    _, view = find_brand("brand_b")
     outline, script, audits = view["branches"][0]["steps"]
     assert outline["code_block"] and script["code_block"] and audits["code_block"]
     assert outline["unknown_placeholders"] == []  # {{competitor_script}} = inspirational script
@@ -126,7 +126,7 @@ def test_outline_saves_only_the_code_block():
     prompt = sent_prompt(data)
     # {{video_title}} and {{competitor_script}} (the inspirational script) filled in place.
     assert f"Outline task for {TITLE}." in prompt and "{{video_title}}" not in prompt
-    assert f"Competitor scripts: {COMPETITOR.strip()}." in prompt
+    assert f"Source scripts: {SOURCE.strip()}." in prompt
     assert "{{competitor_script}}" not in prompt
     assert "<input " not in prompt  # both placed, so nothing repeated after the task
     assert "goes inside the one ``` code block" in prompt
@@ -161,7 +161,7 @@ def test_missing_code_block_saves_the_whole_response(monkeypatch):
 
 
 def test_prompts_without_a_code_block_keep_the_whole_response():
-    data = run(brand="nba_brand_1", inputs={"video_title": TITLE, "inspirational_script": "C"})
+    data = run(brand="brand_a", inputs={"video_title": TITLE, "inspirational_script": "C"})
     assert data["text"].startswith(FENCE)  # fences kept: this brand's prompt didn't ask
     assert data["extract"] == {"expected": False, "status": None, "warning": None}
 
@@ -197,11 +197,11 @@ def test_placeholder_values_are_not_substituted_again():
 def test_context_markers_use_the_conversation_instead_of_resending():
     run()
     run("script")
-    data = run("audits")  # page still holds the competitor script typed for the outline step
+    data = run("audits")  # page still holds the source script typed for the outline step
     prompt = sent_prompt(data)
-    assert "<< Current Script >>" in prompt and "<< Used in outline generation >>" in prompt
+    assert "<< Current Script >>" in prompt and "<< Source used for the outline >>" in prompt
     assert "Text inside << >> in the task means: take it from this conversation" in prompt
-    assert "COMPETITOR SCRIPT TEXT" not in prompt  # same as sent in step 1: not sent again
+    assert "SOURCE SCRIPT TEXT" not in prompt  # same as sent in step 1: not sent again
     assert ("use the inspirational script sent with the Outline step earlier in this "
             "conversation") in prompt
     assert ("use your Script step response from earlier in this conversation (the part inside "
@@ -221,14 +221,14 @@ def test_inputs_already_sent_are_optional_when_continuing():
     run()
     run("script")
     data = run("audits", {}, project_name=TITLE)  # nothing typed (e.g. after a reload)
-    assert "COMPETITOR SCRIPT TEXT" not in sent_prompt(data)
+    assert "SOURCE SCRIPT TEXT" not in sent_prompt(data)
 
 
 def test_new_project_at_a_marker_step_sends_the_inputs():
-    data = run("audits", {"video_title": TITLE, "inspirational_script": COMPETITOR,
+    data = run("audits", {"video_title": TITLE, "inspirational_script": SOURCE,
                           "outline": "O", "script": "S"}, new_project=True)
     prompt = sent_prompt(data)
-    assert "COMPETITOR SCRIPT TEXT" in prompt and '<input name="script"' in prompt
+    assert "SOURCE SCRIPT TEXT" in prompt and '<input name="script"' in prompt
     assert "refers to the matching input under Inputs for this run" in prompt
 
 
@@ -236,7 +236,7 @@ def test_sent_input_recovered_for_a_placeholder():
     first = run()
     project = projects.load(first["project"]["id"])
     assert projects.sent_input(project, "video_title") == TITLE
-    assert projects.sent_input(project, "inspirational_script") == COMPETITOR
+    assert projects.sent_input(project, "inspirational_script") == SOURCE
     assert projects.sent_input(project, "nope") is None
 
 

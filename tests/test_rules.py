@@ -21,16 +21,15 @@ from app.web.scripting import find_brand
 
 client = TestClient(app)
 STEPS = sc.STEP_COLUMNS
-READY = "READY FOR PRODUCTION"
-NBA2_RULES = ('> audits LOOP {     STRICT_VALIDATION;      IF (TAG == "READY FOR PRODUCTION") {'
-              '         BREAK;     } ELSE {         APPLY_CHANGES;         REVALIDATE;     } } '
-              'UNTIL (TAG == "READY FOR PRODUCTION");')
+READY = "APPROVED"
+BRAND_B_RULES = ('> audits LOOP {     VALIDATION;      IF (TAG == "APPROVED") {'
+              '         BREAK;     } ELSE {         REVISION;         REVALIDATE;     } } '
+              'UNTIL (TAG == "APPROVED");')
 RULE_PROMPTS = (
-    'STRICT_VALIDATION = """ Check the complete script. Place the overall rating and production '
-    "status at the very top, inside a code block only. Use exactly one of these formats: "
-    "STATUS - READY FOR PRODUCTION STATUS - NOT READY FOR PRODUCTION The narration must contain "
-    '{{ words_range }} words. """  APPLY_CHANGES = """ Apply all previously suggested fixes. '
-    'Output only the complete revised script & put exactly inside the code panel only. """'
+    'VALIDATION = """ Review the whole script. Start your answer with a rating and one '
+    "status line in a code block: STATUS - APPROVED or STATUS - NOT APPROVED. "
+    'The narration must contain {{ words_range }} words. """  REVISION = """ Make the '
+    'suggested fixes. Return the full revised script in a code panel. """'
 )
 
 
@@ -51,10 +50,10 @@ def test_key_lists_every_keyword_the_parser_knows():
 
 # ------------------------------------------------------------ the language
 
-def test_parses_the_nba_brand_2_rule():
-    program = parse(NBA2_RULES, STEPS)
+def test_parses_the_brand_b_rule():
+    program = parse(BRAND_B_RULES, STEPS)
     assert program.guidance is None and list(program.hooks) == ["audits"]
-    assert program.prompt_names() == {"STRICT_VALIDATION", "APPLY_CHANGES"}
+    assert program.prompt_names() == {"VALIDATION", "REVISION"}
 
 
 def test_guidance_before_the_first_hook_stays_plain_text():
@@ -81,17 +80,17 @@ def test_syntax_errors_say_what_is_wrong(text, message):
 
 def test_rule_prompts_column():
     prompts, warnings = parse_rule_prompts(RULE_PROMPTS + " stray words")
-    assert list(prompts) == ["STRICT_VALIDATION", "APPLY_CHANGES"]
-    assert is_check(prompts["STRICT_VALIDATION"]) and not is_check(prompts["APPLY_CHANGES"])
+    assert list(prompts) == ["VALIDATION", "REVISION"]
+    assert is_check(prompts["VALIDATION"]) and not is_check(prompts["REVISION"])
     assert warnings and "stray words" in warnings[0]
     with pytest.raises(RuleSyntaxError, match="declared twice"):
         parse_rule_prompts('A = """x""" a = """y"""')
 
 
 @pytest.mark.parametrize("text, tag, rating", [
-    ("Overall rating: 8.5/10\nSTATUS - READY FOR PRODUCTION", READY, 8.5),
-    ("**Rating – 7**\nStatus: not ready for production.", "NOT READY FOR PRODUCTION", 7.0),
-    ("STATUS — READY FOR PRODUCTION", READY, None),
+    ("Overall rating: 8.5/10\nSTATUS - APPROVED", READY, 8.5),
+    ("**Rating – 7**\nStatus: not approved.", "NOT APPROVED", 7.0),
+    ("STATUS — APPROVED", READY, None),
     ("No status at all", "", None),
 ])
 def test_parse_tag_and_rating(text, tag, rating):
@@ -108,7 +107,7 @@ def fake_model(ready_at=2, fail_on=None):
         calls.append(name)
         if name == fail_on:
             raise RuntimeError("boom")
-        if name in ("STRICT_VALIDATION", "CHECK"):
+        if name in ("VALIDATION", "CHECK"):
             n = calls.count(name)
             return f"```\nRating: {6 + n}/10\nSTATUS - {'' if n >= ready_at else 'NOT '}{READY}\n```"
         return f"```\nscript v{calls.count(name)}\n```\nnotes"
@@ -116,8 +115,8 @@ def fake_model(ready_at=2, fail_on=None):
     return call, calls
 
 
-PROMPTS = {"STRICT_VALIDATION": "Check it. STATUS - READY FOR PRODUCTION",
-           "CHECK": "Check. STATUS - OK", "APPLY_CHANGES": "Fix it.", "FIX_LENGTH": "Fix length."}
+PROMPTS = {"VALIDATION": "Check it. STATUS - APPROVED",
+           "CHECK": "Check. STATUS - OK", "REVISION": "Fix it.", "FIX_LENGTH": "Fix length."}
 
 
 def run(text, ready_at=2, script="original script"):
@@ -128,8 +127,8 @@ def run(text, ready_at=2, script="original script"):
 
 
 def test_validate_fix_revalidate_until_ready():
-    result, calls = run(NBA2_RULES, ready_at=2)
-    assert calls == ["STRICT_VALIDATION", "APPLY_CHANGES", "STRICT_VALIDATION"]
+    result, calls = run(BRAND_B_RULES, ready_at=2)
+    assert calls == ["VALIDATION", "REVISION", "VALIDATION"]
     assert result.script == "script v1" and result.changed and result.ready
     assert result.tag == READY and result.rating == 8.0 and not result.warnings
     assert [e["kind"] for e in result.log] == ["check", "revision", "check"]
@@ -137,40 +136,40 @@ def test_validate_fix_revalidate_until_ready():
 
 
 def test_ready_on_the_first_check_keeps_the_step_script():
-    result, calls = run(NBA2_RULES, ready_at=1)
-    assert calls == ["STRICT_VALIDATION"]
+    result, calls = run(BRAND_B_RULES, ready_at=1)
+    assert calls == ["VALIDATION"]
     assert result.script == "original script" and not result.changed and result.ready
 
 
 def test_loop_stops_after_the_default_passes():
-    result, calls = run(NBA2_RULES, ready_at=99)
-    assert calls.count("STRICT_VALIDATION") == keys.DEFAULT_MAX_LOOP
+    result, calls = run(BRAND_B_RULES, ready_at=99)
+    assert calls.count("VALIDATION") == keys.DEFAULT_MAX_LOOP
     assert result.script == f"script v{keys.DEFAULT_MAX_LOOP}" and not result.ready
     assert "Stopped after 3 passes" in result.warnings[0]
 
 
 def test_loop_max_and_conditions():
-    result, calls = run('> audits LOOP (MAX 5) { STRICT_VALIDATION; IF (TAG == "READY FOR '
-                        'PRODUCTION") { BREAK; } APPLY_CHANGES; }', ready_at=4)
-    assert calls.count("STRICT_VALIDATION") == 4 and result.script == "script v3"
+    result, calls = run('> audits LOOP (MAX 5) { VALIDATION; IF (TAG == "APPROVED") '
+                        '{ BREAK; } REVISION; }', ready_at=4)
+    assert calls.count("VALIDATION") == 4 and result.script == "script v3"
 
-    result, calls = run("> audits STRICT_VALIDATION; IF (TAG CONTAINS \"NOT\" AND RATING < 9) "
-                        "{ APPLY_CHANGES; }", ready_at=5)
-    assert calls == ["STRICT_VALIDATION", "APPLY_CHANGES"]
+    result, calls = run("> audits VALIDATION; IF (TAG CONTAINS \"NOT\" AND RATING < 9) "
+                        "{ REVISION; }", ready_at=5)
+    assert calls == ["VALIDATION", "REVISION"]
 
-    result, calls = run("> audits WHILE (ITERATION < 2) { APPLY_CHANGES; }")
-    assert calls == ["APPLY_CHANGES", "APPLY_CHANGES"]
+    result, calls = run("> audits WHILE (ITERATION < 2) { REVISION; }")
+    assert calls == ["REVISION", "REVISION"]
 
     result, calls = run("> audits IF (WORDS < 5 OR NOT (RUNS == 0)) { FIX_LENGTH; } "
-                        "ELSE IF (TAG == \"\") { STOP; APPLY_CHANGES; }", script="two words")
+                        "ELSE IF (TAG == \"\") { STOP; REVISION; }", script="two words")
     assert calls == ["FIX_LENGTH"]
 
 
 def test_stop_and_max_runs():
-    result, calls = run("> audits APPLY_CHANGES; STOP; APPLY_CHANGES;")
-    assert calls == ["APPLY_CHANGES"]
-    result, calls = run("> audits LOOP (MAX 10) { APPLY_CHANGES; APPLY_CHANGES; "
-                        "APPLY_CHANGES; }")
+    result, calls = run("> audits REVISION; STOP; REVISION;")
+    assert calls == ["REVISION"]
+    result, calls = run("> audits LOOP (MAX 10) { REVISION; REVISION; "
+                        "REVISION; }")
     assert len(calls) == keys.MAX_RUNS and "Stopped" in result.warnings[-1]
 
 
@@ -187,14 +186,14 @@ def tsv(rows, rule_prompts_col=True):
     return out.getvalue().encode()
 
 
-NBA2_ROW = {
+BRAND_B_ROW = {
     "Outline": "Outline task for {{video_title}}. Competitor: {{competitor_script}}. "
                "Put the outline inside a Markdown code block.",
     "Script": 'Script task. APPROVED OUTLINE: """ {{outline}} """ Inside a code block.',
-    "Audits": 'Audit. Outline << Used For Script Generation >> Script << Current Script >>. '
+    "Audits": 'Audit. Outline << Outline used for the script >> Script << Current Script >>. '
               "Final script inside a single Markdown code block.",
-    "Brand": "NBA Brand 2", "Steps": "Outline + Script + Audits",
-    "Rules": NBA2_RULES, "Rule Prompts": RULE_PROMPTS,
+    "Brand": "Brand B", "Steps": "Outline + Script + Audits",
+    "Rules": BRAND_B_RULES, "Rule Prompts": RULE_PROMPTS,
     "Inputs": "outline = video_title + inspirational_script + outline_prompt "
               "script = video_title + outline + script_prompt "
               "audits = video_title + outline + audits_prompt + script + inspirational_script",
@@ -202,24 +201,24 @@ NBA2_ROW = {
 
 
 def test_admin_reads_rule_prompts_and_checks_the_rules():
-    result = sc.parse_tsv(tsv([NBA2_ROW]))
-    brand = result.config[0]["nba_brand_2"]
-    assert list(brand["rule_prompts"]) == ["STRICT_VALIDATION", "APPLY_CHANGES"]
-    assert brand["rules"] == NBA2_RULES and result.warnings == []
+    result = sc.parse_tsv(tsv([BRAND_B_ROW]))
+    brand = result.config[0]["brand_b"]
+    assert list(brand["rule_prompts"]) == ["VALIDATION", "REVISION"]
+    assert brand["rules"] == BRAND_B_RULES and result.warnings == []
 
 
 @pytest.mark.parametrize("change, message", [
-    ({"Rule Prompts": 'STRICT_VALIDATION = """ STATUS - X """'}, "doesn't declare it"),
-    ({"Rules": "> audits LOOP { STRICT_VALIDATION;"}, "NBA Brand 2: Rules:"),
+    ({"Rule Prompts": 'VALIDATION = """ STATUS - X """'}, "doesn't declare it"),
+    ({"Rules": "> audits LOOP { VALIDATION;"}, "Brand B: Rules:"),
     ({"Rule Prompts": RULE_PROMPTS + ' LOOP = """ x """'}, "name of a keyword"),
 ])
 def test_admin_rejects_broken_rules(change, message):
     with pytest.raises(sc.TsvError, match=message):
-        sc.parse_tsv(tsv([{**NBA2_ROW, **change}]))
+        sc.parse_tsv(tsv([{**BRAND_B_ROW, **change}]))
 
 
 def test_admin_warns_about_rule_gaps():
-    row = {**NBA2_ROW, "Rules": NBA2_RULES.replace("> audits", "> research"),
+    row = {**BRAND_B_ROW, "Rules": BRAND_B_RULES.replace("> audits", "> research"),
            "Rule Prompts": RULE_PROMPTS + ' UNUSED = """ Uses {{nope}} """'}
     warnings = sc.parse_tsv(tsv([row])).warnings
     assert any("after 'research', but that step never runs" in w for w in warnings)
@@ -228,8 +227,8 @@ def test_admin_warns_about_rule_gaps():
 
 
 def test_sheet_without_rule_prompts_column_still_works():
-    row = {k: v for k, v in NBA2_ROW.items() if k not in ("Rules", "Rule Prompts")}
-    assert sc.parse_tsv(tsv([row], rule_prompts_col=False)).config[0]["nba_brand_2"][
+    row = {k: v for k, v in BRAND_B_ROW.items() if k not in ("Rules", "Rule Prompts")}
+    assert sc.parse_tsv(tsv([row], rule_prompts_col=False)).config[0]["brand_b"][
         "rule_prompts"] == {}
 
 
@@ -237,7 +236,7 @@ def test_sheet_without_rule_prompts_column_still_works():
 
 @pytest.fixture
 def brand2(tmp_path, monkeypatch):
-    cfg = sc.parse_tsv(tsv([NBA2_ROW])).config
+    cfg = sc.parse_tsv(tsv([BRAND_B_ROW])).config
     sc.config_path().parent.mkdir(parents=True, exist_ok=True)
     sc.config_path().write_text(json.dumps(cfg), encoding="utf-8")
     monkeypatch.setenv("FAKE_CLAUDE_MODE", "codeblock")
@@ -247,9 +246,9 @@ def brand2(tmp_path, monkeypatch):
 
 
 def step(name, **overrides):
-    inputs = {"video_title": "KD 25", "inspirational_script": "Competitor text"}
-    body = {"brand": "nba_brand_2", "branch": 0, "step": name, "language": "English",
-            "inputs": inputs if name == "outline" else {"video_title": "KD 25"}}
+    inputs = {"video_title": "Day 25", "inspirational_script": "Source text"}
+    body = {"brand": "brand_b", "branch": 0, "step": name, "language": "English",
+            "inputs": inputs if name == "outline" else {"video_title": "Day 25"}}
     body.update(overrides)
     r = client.post("/api/scripting/run", json=body)
     assert r.status_code == 200, r.text
@@ -263,10 +262,10 @@ def flow(**audit_overrides):
 
 
 def test_brand_view_shows_rules_after_audits(brand2):
-    _, view = find_brand("nba_brand_2")
+    _, view = find_brand("brand_b")
     assert view["rules"] is None and view["rules_program"].startswith("> audits LOOP")
     outline, _, audits = view["branches"][0]["steps"]
-    assert audits["rules_after"] == ["STRICT_VALIDATION", "APPLY_CHANGES"]
+    assert audits["rules_after"] == ["VALIDATION", "REVISION"]
     assert outline["rules_after"] == []
 
 
@@ -279,10 +278,10 @@ def test_rules_run_after_audits_and_keep_the_last_script(brand2):
     done = client.get(f"/api/scripting/rules/{job['id']}").json()
     assert done["status"] == "done", done
     assert [(e["name"], e.get("tag")) for e in done["log"]] == [
-        ("STRICT_VALIDATION", "NOT READY FOR PRODUCTION"), ("APPLY_CHANGES", None),
-        ("STRICT_VALIDATION", READY)]
+        ("VALIDATION", "NOT APPROVED"), ("REVISION", None),
+        ("VALIDATION", READY)]
     final = done["final"]
-    assert final["ready"] and final["changed"] and final["text"] == "REVISED SCRIPT v1 by APPLY_CHANGES"
+    assert final["ready"] and final["changed"] and final["text"] == "REVISED SCRIPT v1 by REVISION"
     assert done["rating"] == 9.1
 
     # Saved like a step result, recorded in the project: the next step would use it.
@@ -296,17 +295,17 @@ def test_rules_run_after_audits_and_keep_the_last_script(brand2):
 
     # Each rule prompt went into the same conversation, with {{ words_range }} filled in.
     folder = projects.projects_dir() / job["project_id"] / "rules" / job["id"]
-    sent = (folder / "01-strict_validation.prompt.txt").read_text(encoding="utf-8")
-    assert sent.startswith("# Rule: STRICT_VALIDATION (after the Audits step · loop pass 1)")
-    assert "must contain 1,600–2,000 words" in sent and "{{" not in sent
-    assert (folder / "log.json").is_file() and (folder / "02-apply_changes.txt").is_file()
+    sent = (folder / "01-validation.prompt.txt").read_text(encoding="utf-8")
+    assert sent.startswith("# Rule: VALIDATION (after the Audits step · loop pass 1)")
+    assert "must contain 1,200–1,500 words" in sent and "{{" not in sent
+    assert (folder / "log.json").is_file() and (folder / "02-revision.txt").is_file()
 
 
 def test_ready_at_once_keeps_the_audits_result(brand2, monkeypatch):
     monkeypatch.setenv("FAKE_READY_AT", "1")
     audits = flow()
     done = client.get(f"/api/scripting/rules/{audits['rules']['id']}").json()
-    assert [e["name"] for e in done["log"]] == ["STRICT_VALIDATION"]
+    assert [e["name"] for e in done["log"]] == ["VALIDATION"]
     assert done["final"]["changed"] is False
     assert done["final"]["file"]["name"] == audits["file"]["name"]
     assert done["final"]["text"] == audits["text"]
@@ -317,23 +316,23 @@ def test_rules_can_be_skipped_and_run_again(brand2, monkeypatch):
     audits = flow(run_rules=False)
     assert audits["rules"] is None
 
-    body = {"brand": "nba_brand_2", "branch": 0, "step": "audits",
+    body = {"brand": "brand_b", "branch": 0, "step": "audits",
             "project_id": audits["project"]["id"]}
     first = client.post("/api/scripting/rules", json=body).json()
     done = client.get(f"/api/scripting/rules/{first['id']}").json()
     assert done["status"] == "done" and not done["ready"]
     assert "Stopped after 3 passes" in done["warnings"][0]
-    assert done["final"]["text"] == "REVISED SCRIPT v3 by APPLY_CHANGES"
+    assert done["final"]["text"] == "REVISED SCRIPT v3 by REVISION"
 
     again = client.get(f"/api/scripting/rules/{client.post('/api/scripting/rules', json=body).json()['id']}").json()
     # Starts from the latest revision; the counter carries on (v4, v5, v6).
-    assert again["final"]["text"] == "REVISED SCRIPT v6 by APPLY_CHANGES"
+    assert again["final"]["text"] == "REVISED SCRIPT v6 by REVISION"
 
 
 def test_failed_rule_reports_the_error(brand2, monkeypatch):
     audits = flow(run_rules=False)
     monkeypatch.setenv("FAKE_CLAUDE_MODE", "error")
-    body = {"brand": "nba_brand_2", "branch": 0, "step": "audits",
+    body = {"brand": "brand_b", "branch": 0, "step": "audits",
             "project_id": audits["project"]["id"]}
     done = client.get(f"/api/scripting/rules/{client.post('/api/scripting/rules', json=body).json()['id']}").json()
     assert done["status"] == "failed" and "Model overloaded" in done["error"]
@@ -343,16 +342,16 @@ def test_failed_rule_reports_the_error(brand2, monkeypatch):
 
 def test_project_is_busy_while_rules_run(brand2):
     audits = flow(run_rules=False)
-    _, view = find_brand("nba_brand_2")
+    _, view = find_brand("brand_b")
     project = projects.load(audits["project"]["id"])
     job = rule_jobs.create(project=project, view=view, step=view["branches"][0]["steps"][2],
-                           provider="claude", language="English", title="KD 25",
+                           provider="claude", language="English", title="Day 25",
                            start_file=audits["file"]["name"], start_text="x", values={})
     job.status = "running"
     try:
         r = client.post("/api/scripting/run", json={
-            "brand": "nba_brand_2", "branch": 0, "step": "audits", "language": "English",
-            "inputs": {"video_title": "KD 25"}})
+            "brand": "brand_b", "branch": 0, "step": "audits", "language": "English",
+            "inputs": {"video_title": "Day 25"}})
         assert r.status_code == 409 and "still running the rules" in r.json()["detail"]["message"]
     finally:
         job.status = "done"
@@ -362,7 +361,7 @@ def test_rules_with_codex(brand2):
     audits = flow(provider="codex")
     done = client.get(f"/api/scripting/rules/{audits['rules']['id']}").json()
     assert done["status"] == "done" and done["ready"]
-    assert done["final"]["text"] == "REVISED SCRIPT v1 by APPLY_CHANGES"
+    assert done["final"]["text"] == "REVISED SCRIPT v1 by REVISION"
 
 
 def test_unknown_job_is_404():
@@ -374,22 +373,22 @@ def test_unknown_job_is_404():
 def test_explain_lays_the_rule_out_line_by_line():
     from app.rules.explain import lines
     prompts, _ = parse_rule_prompts(RULE_PROMPTS)
-    got = [(l["indent"], l["code"]) for l in lines(parse(NBA2_RULES, STEPS), prompts)]
+    got = [(l["indent"], l["code"]) for l in lines(parse(BRAND_B_RULES, STEPS), prompts)]
     assert got == [
         (0, "> audits"),
         (0, "LOOP {"),
-        (1, "STRICT_VALIDATION;"),
-        (1, 'IF (TAG == "READY FOR PRODUCTION") {'),
+        (1, "VALIDATION;"),
+        (1, 'IF (TAG == "APPROVED") {'),
         (2, "BREAK;"),
         (1, "} ELSE {"),
-        (2, "APPLY_CHANGES;"),
+        (2, "REVISION;"),
         (2, "REVALIDATE;"),
         (1, "}"),
-        (0, '} UNTIL (TAG == "READY FOR PRODUCTION");'),
+        (0, '} UNTIL (TAG == "APPROVED");'),
     ]
-    notes = {l["code"]: l["note"] for l in lines(parse(NBA2_RULES, STEPS), prompts)}
-    assert notes["STRICT_VALIDATION;"].startswith("check:")
-    assert notes["APPLY_CHANGES;"].startswith("revision:")
+    notes = {l["code"]: l["note"] for l in lines(parse(BRAND_B_RULES, STEPS), prompts)}
+    assert notes["VALIDATION;"].startswith("check:")
+    assert notes["REVISION;"].startswith("revision:")
 
 
 @pytest.mark.parametrize("description, text", keys.RULE_EXAMPLES)
@@ -405,9 +404,9 @@ def test_every_example_lays_out_and_reparses(description, text):
 def test_example_run_follows_the_rules():
     from app.rules.explain import example_run
     prompts, _ = parse_rule_prompts(RULE_PROMPTS)
-    run = example_run(parse(NBA2_RULES, STEPS).hooks["audits"], prompts, "audits")
+    run = example_run(parse(BRAND_B_RULES, STEPS).hooks["audits"], prompts, "audits")
     assert [r["what"] for r in run["rows"]] == [
-        "Audits", "STRICT_VALIDATION #1", "APPLY_CHANGES #1", "STRICT_VALIDATION #2"]
+        "Audits", "VALIDATION #1", "REVISION #1", "VALIDATION #2"]
     assert run["final"] == "Final Audits result = script B"
 
 
@@ -419,17 +418,17 @@ def test_dashboard_shows_rules_and_rule_prompts(brand2, monkeypatch):
     page = c.get("/admin/scripts/dashboard").text
     assert "Rules after Audits" in page and "What it does" in page
     assert "go back to the check" in page and "Final Audits result = script B" in page
-    assert "STRICT_VALIDATION</span> = &#34;&#34;&#34;" in page or 'STRICT_VALIDATION</span> = """' in page
-    assert "{{ words_range }}" in page and "→ 1,600–2,000" in page
+    assert "VALIDATION</span> = &#34;&#34;&#34;" in page or 'VALIDATION</span> = """' in page
+    assert "{{ words_range }}" in page and "→ 1,200–1,500" in page
 
 
 # ------------------------------------------------------------ two checks (validation + title)
 
-TITLE_RULES = next(r for d, r in keys.RULE_EXAMPLES if "TITLE_SATISFACTION" in r)
-TITLE_PROMPTS = {"STRICT_VALIDATION": "Check it. STATUS - READY FOR PRODUCTION or "
-                 "STATUS - NOT READY FOR PRODUCTION",
-                 "TITLE_SATISFACTION": "Does it fulfil the title? STATUS - TRUE or STATUS - FALSE",
-                 "APPLY_CHANGES": "Fix it."}
+TITLE_RULES = next(r for d, r in keys.RULE_EXAMPLES if "TITLE_CHECK" in r)
+TITLE_PROMPTS = {"VALIDATION": "Check it. STATUS - APPROVED or "
+                 "STATUS - NOT APPROVED",
+                 "TITLE_CHECK": "Does it fulfil the title? STATUS - TRUE or STATUS - FALSE",
+                 "REVISION": "Fix it."}
 
 
 FENCE = "`" * 3
@@ -455,28 +454,28 @@ def run_answers(rules, answers):
 
 def test_title_check_runs_only_after_ready_and_true_is_ready():
     result, calls = run_answers(TITLE_RULES, {
-        "STRICT_VALIDATION": ["NOT READY FOR PRODUCTION", "READY FOR PRODUCTION"],
-        "TITLE_SATISFACTION": ["FALSE", "TRUE"]})
-    assert calls == ["STRICT_VALIDATION=NOT READY FOR PRODUCTION", "APPLY_CHANGES",
-                     "STRICT_VALIDATION=READY FOR PRODUCTION", "TITLE_SATISFACTION=FALSE",
-                     "APPLY_CHANGES", "STRICT_VALIDATION=READY FOR PRODUCTION",
-                     "TITLE_SATISFACTION=TRUE"]
+        "VALIDATION": ["NOT APPROVED", "APPROVED"],
+        "TITLE_CHECK": ["FALSE", "TRUE"]})
+    assert calls == ["VALIDATION=NOT APPROVED", "REVISION",
+                     "VALIDATION=APPROVED", "TITLE_CHECK=FALSE",
+                     "REVISION", "VALIDATION=APPROVED",
+                     "TITLE_CHECK=TRUE"]
     assert result.script == "script C" and result.tag == "TRUE" and result.ready
     assert not result.warnings
 
 
-def test_title_never_true_stops_on_the_sixth_check_without_an_unchecked_fix():
-    result, calls = run_answers(TITLE_RULES, {"STRICT_VALIDATION": ["READY FOR PRODUCTION"],
-                                              "TITLE_SATISFACTION": ["FALSE"]})
-    assert calls.count("APPLY_CHANGES") == 5 and calls.count("TITLE_SATISFACTION=FALSE") == 6
-    assert calls[-1] == "TITLE_SATISFACTION=FALSE"
-    assert result.script == "script F" and not result.ready and not result.warnings
+def test_title_never_true_stops_on_the_fourth_check_without_an_unchecked_fix():
+    result, calls = run_answers(TITLE_RULES, {"VALIDATION": ["APPROVED"],
+                                              "TITLE_CHECK": ["FALSE"]})
+    assert calls.count("REVISION") == 3 and calls.count("TITLE_CHECK=FALSE") == 4
+    assert calls[-1] == "TITLE_CHECK=FALSE"
+    assert result.script == "script D" and not result.ready and not result.warnings
 
 
 def test_passed_tags():
     from app.rules.engine import passed
-    assert all(passed(t) for t in ("READY FOR PRODUCTION", "TRUE", "yes", "PASS"))
-    assert not any(passed(t) for t in ("NOT READY FOR PRODUCTION", "FALSE", "", "READYISH"))
+    assert all(passed(t) for t in ("APPROVED", "TRUE", "yes", "PASS"))
+    assert not any(passed(t) for t in ("NOT APPROVED", "FALSE", "", "READYISH"))
 
 
 def test_example_run_uses_each_checks_own_tags():
@@ -484,28 +483,28 @@ def test_example_run_uses_each_checks_own_tags():
     run = example_run(parse(TITLE_RULES, STEPS).hooks["audits"], TITLE_PROMPTS, "audits")
     assert [(r["what"], r["result"].split("  ")[0]) for r in run["rows"]] == [
         ("Audits", "→ script A"),
-        ("STRICT_VALIDATION #1", "→ NOT READY FOR PRODUCTION"), ("APPLY_CHANGES #1", "→ script B"),
-        ("STRICT_VALIDATION #2", "→ READY FOR PRODUCTION"), ("TITLE_SATISFACTION #1", "→ FALSE"),
-        ("APPLY_CHANGES #2", "→ script C"), ("STRICT_VALIDATION #3", "→ READY FOR PRODUCTION"),
-        ("TITLE_SATISFACTION #2", "→ TRUE")]
+        ("VALIDATION #1", "→ NOT APPROVED"), ("REVISION #1", "→ script B"),
+        ("VALIDATION #2", "→ APPROVED"), ("TITLE_CHECK #1", "→ FALSE"),
+        ("REVISION #2", "→ script C"), ("VALIDATION #3", "→ APPROVED"),
+        ("TITLE_CHECK #2", "→ TRUE")]
     assert run["rows"][-1]["ready"] and run["final"] == "Final Audits result = script C"
-    assert "TITLE_SATISFACTION: TRUE / FALSE" in run["assumption"]
+    assert "TITLE_CHECK: TRUE / FALSE" in run["assumption"]
 
 
 @pytest.mark.parametrize(("text", "tag"), [
     ("Title Satisfied: True", "TRUE"), ("title satisfied - false", "FALSE"),
-    ("Satisfied: True", "TRUE"), ("STATUS - READY FOR PRODUCTION", "READY FOR PRODUCTION")])
+    ("Satisfied: True", "TRUE"), ("STATUS - APPROVED", "APPROVED")])
 def test_title_satisfied_is_a_status_line(text, tag):
     assert parse_tag(text) == tag
 
 
 def test_title_satisfied_prompt_is_a_check():
     from app.rules.prompts import is_check
-    prompt = ("Place the result at the very top, inside a code block, using exactly one of the "
-              "following formats: Title Satisfied: True Title Satisfied: False If True, ...")
+    prompt = ("Does the title match the script? Answer with one line, Title Satisfied: True or "
+              "Title Satisfied: False, then say why.")
     assert is_check(prompt)
     result, _calls = run_answers(TITLE_RULES, {
-        "STRICT_VALIDATION": ["READY FOR PRODUCTION"], "TITLE_SATISFACTION": ["TRUE"]})
+        "VALIDATION": ["APPROVED"], "TITLE_CHECK": ["TRUE"]})
     assert result.ready and result.script == "script A"
 
 
@@ -513,15 +512,15 @@ def test_upload_warns_when_no_check_asks_for_a_tag():
     from app.admin.scripts_config import _check_rules
     warnings = []
     cells = {"Rules": TITLE_RULES, "Rule Prompts": (
-        'STRICT_VALIDATION = """STATUS - READY FOR PRODUCTION or STATUS - NOT READY"""\n'
-        'TITLE_SATISFACTION = """Is the title delivered? Answer yes or no."""\n'
-        'APPLY_CHANGES = """Fix it."""')}
-    _check_rules("NBA Brand 2", cells, {"audits"}, {}, warnings)
+        'VALIDATION = """STATUS - APPROVED or STATUS - NOT READY"""\n'
+        'TITLE_CHECK = """Is the title delivered? Answer yes or no."""\n'
+        'REVISION = """Fix it."""')}
+    _check_rules("Brand B", cells, {"audits"}, {}, warnings)
     assert any('compare TAG with "TRUE"' in w for w in warnings)
     warnings.clear()
     cells["Rule Prompts"] = cells["Rule Prompts"].replace(
         "Answer yes or no.", "Title Satisfied: True or Title Satisfied: False")
-    _check_rules("NBA Brand 2", cells, {"audits"}, {}, warnings)
+    _check_rules("Brand B", cells, {"audits"}, {}, warnings)
     assert not any("compare TAG" in w for w in warnings)
 
 
@@ -535,7 +534,7 @@ def test_rules_guide_page_shows_every_key(monkeypatch):
     assert page.status_code == 200
     for key in [*keys.RULE_KEYWORDS, *keys.RULE_VARIABLES, *keys.BUILTIN_PLACEHOLDERS]:
         assert key.replace('"', "&#34;") in page.text or key in page.text, key
-    assert "TITLE_SATISFACTION" in page.text and "Rules guide" in page.text
+    assert "TITLE_CHECK" in page.text and "Rules guide" in page.text
 
 
 def test_rules_use_the_effort_picked_for_the_step(brand2):
@@ -547,7 +546,7 @@ def test_rules_use_the_effort_picked_for_the_step(brand2):
     assert done["log"] and {e["effort"] for e in done["log"]} == {"max"}
     assert done["provider"] == "claude"
     again = client.post("/api/scripting/rules", json={
-        "brand": "nba_brand_2", "branch": 0, "step": "audits",
+        "brand": "brand_b", "branch": 0, "step": "audits",
         "project_id": done["project_id"], "effort": "low"}).json()
     rerun = client.get(f"/api/scripting/rules/{again['id']}").json()
     assert {e["effort"] for e in rerun["log"]} == {"low"}
@@ -556,12 +555,12 @@ def test_rules_use_the_effort_picked_for_the_step(brand2):
 # ------------------------------------------------------------ rules before a step ('< step')
 
 def test_parse_before_and_after_hooks():
-    program = parse('Be calm. < outline RESEARCH; > audits STRICT_VALIDATION; '
-                    'IF (RATING < 9) { APPLY_CHANGES; }', STEPS)
+    program = parse('Be calm. < outline RESEARCH; > audits VALIDATION; '
+                    'IF (RATING < 9) { REVISION; }', STEPS)
     assert program.guidance == "Be calm."
     assert program.before == {"outline": [Run("RESEARCH")]}
     assert list(program.hooks) == ["audits"]
-    assert program.prompt_names() == {"RESEARCH", "STRICT_VALIDATION", "APPLY_CHANGES"}
+    assert program.prompt_names() == {"RESEARCH", "VALIDATION", "REVISION"}
 
 
 @pytest.mark.parametrize("text, message", [
@@ -575,11 +574,11 @@ def test_bad_before_hooks(text, message):
 
 
 BEFORE_ROW = {
-    **NBA2_ROW,
+    **BRAND_B_ROW,
     "Outline": "Outline task for {{video_title}}. Research: {{ research }}. "
                "Competitor: {{competitor_script}}. Put the outline inside a Markdown code block.",
-    "Rules": "< outline RESEARCH; " + NBA2_RULES,
-    "Rule Prompts": RULE_PROMPTS + ' RESEARCH = """ Research the game. Put the facts in a code '
+    "Rules": "< outline RESEARCH; " + BRAND_B_RULES,
+    "Rule Prompts": RULE_PROMPTS + ' RESEARCH = """ Research the topic. Put the facts in a code '
                                    'block. """',
 }
 
@@ -595,7 +594,7 @@ def brand_before(tmp_path, monkeypatch):
 
 
 def test_view_lists_rules_before_a_step(brand_before):
-    _, view = find_brand("nba_brand_2")
+    _, view = find_brand("brand_b")
     outline = view["branches"][0]["steps"][0]
     assert outline["rules_before"] == ["RESEARCH"] and outline["rules_after"] == []
     assert outline["rule_placeholders"] == ["research"]
@@ -633,9 +632,9 @@ def test_rules_switch_off_skips_the_rules_before(brand_before):
 
 def test_a_failing_rule_before_stops_the_step(brand_before, monkeypatch):
     monkeypatch.setenv("FAKE_CLAUDE_MODE", "error")
-    body = {"brand": "nba_brand_2", "branch": 0, "step": "outline", "language": "English",
+    body = {"brand": "brand_b", "branch": 0, "step": "outline", "language": "English",
             "new_project": True,
-            "inputs": {"video_title": "KD 25", "inspirational_script": "Competitor text"}}
+            "inputs": {"video_title": "Day 25", "inspirational_script": "Source text"}}
     r = client.post("/api/scripting/run", json=body)
     assert r.status_code == 502
     detail = r.json()["detail"]
@@ -646,7 +645,7 @@ def test_a_failing_rule_before_stops_the_step(brand_before, monkeypatch):
 
 def test_dashboard_explains_rules_before(brand_before):
     from app.rules.explain import brand_rules
-    brand = brand_before[0]["nba_brand_2"]
+    brand = brand_before[0]["brand_b"]
     view = brand_rules(brand, STEPS)
     assert view["before"] == ["outline"] and view["after"] == ["audits"]
     assert view["lines"][0]["code"] == "< outline"
@@ -657,7 +656,7 @@ def test_dashboard_explains_rules_before(brand_before):
 
 def test_rule_prompts_before_a_step_get_the_inputs_and_earlier_results(tmp_path, monkeypatch):
     row = {**BEFORE_ROW,
-           "Rules": "< outline RESEARCH; FACT_CHECK; " + NBA2_RULES,
+           "Rules": "< outline RESEARCH; FACT_CHECK; " + BRAND_B_RULES,
            "Rule Prompts": RULE_PROMPTS
            + ' RESEARCH = """ Research {{ video_title }} using {{ competitor_script }}. """'
            + ' FACT_CHECK = """ Check these facts: {{ research }} for {{ brand_name }}. """'}
@@ -670,15 +669,15 @@ def test_rule_prompts_before_a_step_get_the_inputs_and_earlier_results(tmp_path,
     folder = (projects.projects_dir() / data["project"]["id"] / "rules"
               / f"before-outline-{data['rules_before']['id']}")
     research = (folder / "01-research.prompt.txt").read_text(encoding="utf-8")
-    assert "Research KD 25 using Competitor text." in research      # the step's inputs
+    assert "Research Day 25 using Source text." in research      # the step's inputs
     check = (folder / "02-fact_check.prompt.txt").read_text(encoding="utf-8")
-    assert "Check these facts: REVISED SCRIPT v1 by RESEARCH for NBA Brand 2." in check
+    assert "Check these facts: REVISED SCRIPT v1 by RESEARCH for Brand B." in check
 
 
 # ------------------------------------------------------------ '> a OR b' and CANCEL
 
 def test_or_hook_runs_the_same_rules_after_each_step():
-    program = parse("> paraphrasing OR audits STRICT_VALIDATION; < script, outline RESEARCH;",
+    program = parse("> paraphrasing OR audits VALIDATION; < script, outline RESEARCH;",
                     STEPS)
     assert set(program.hooks) == {"paraphrasing", "audits"}
     assert program.hooks["paraphrasing"] is program.hooks["audits"]
@@ -706,22 +705,22 @@ def test_cancel_ends_the_rules_and_marks_them_cancelled():
 
 def test_cancel_before_a_step_means_the_step_doesnt_run(tmp_path, monkeypatch):
     row = {**BEFORE_ROW,
-           "Rules": '< outline STRICT_VALIDATION; IF (TAG CONTAINS "NOT") { STOP; } '
-                    "ELSE { CANCEL; } " + NBA2_RULES}
+           "Rules": '< outline VALIDATION; IF (TAG CONTAINS "NOT") { STOP; } '
+                    "ELSE { CANCEL; } " + BRAND_B_RULES}
     cfg = sc.parse_tsv(tsv([row])).config
     sc.config_path().parent.mkdir(parents=True, exist_ok=True)
     sc.config_path().write_text(json.dumps(cfg), encoding="utf-8")
     monkeypatch.setenv("FAKE_CLAUDE_MODE", "codeblock")
     monkeypatch.setenv("FAKE_RULES_COUNTER", str(tmp_path / "rule_counts.json"))
     monkeypatch.setenv("FAKE_READY_AT", "1")     # the check says READY -> CANCEL
-    body = {"brand": "nba_brand_2", "branch": 0, "step": "outline", "language": "English",
+    body = {"brand": "brand_b", "branch": 0, "step": "outline", "language": "English",
             "new_project": True,
-            "inputs": {"video_title": "KD 25", "inspirational_script": "Competitor text"}}
+            "inputs": {"video_title": "Day 25", "inspirational_script": "Source text"}}
     r = client.post("/api/scripting/run", json=body)
     assert r.status_code == 409, r.text
     detail = r.json()["detail"]
     assert detail["code"] == "step_cancelled" and "Outline didn't run" in detail["message"]
-    assert [e["name"] for e in detail["rules"]["log"]] == ["STRICT_VALIDATION"]
+    assert [e["name"] for e in detail["rules"]["log"]] == ["VALIDATION"]
     assert not list((get_cli_settings().output_dir / "outline").glob("*.txt"))
     monkeypatch.setenv("FAKE_READY_AT", "99")    # NOT READY -> STOP: the step runs
     assert client.post("/api/scripting/run", json=body).status_code == 200
@@ -729,11 +728,11 @@ def test_cancel_before_a_step_means_the_step_doesnt_run(tmp_path, monkeypatch):
 
 def test_the_top10_paraphrasing_rules_file_works():
     from app.rules.explain import brand_rules
-    rules = next(r for _, r in keys.RULE_EXAMPLES if "ENTRIES_VALIDATION" in r)
-    prompts = {"ENTRIES_VALIDATION": "Check the entries. STATUS - CONTINUE or STATUS - RESEARCH",
-               "STRICT_VALIDATION": TITLE_PROMPTS["STRICT_VALIDATION"],
-               "TITLE_SATISFACTION": TITLE_PROMPTS["TITLE_SATISFACTION"],
-               "APPLY_CHANGES": "Fix it."}
+    rules = next(r for _, r in keys.RULE_EXAMPLES if "ENTRIES_CHECK" in r)
+    prompts = {"ENTRIES_CHECK": "Check the entries. STATUS - CONTINUE or STATUS - RESEARCH",
+               "VALIDATION": TITLE_PROMPTS["VALIDATION"],
+               "TITLE_CHECK": TITLE_PROMPTS["TITLE_CHECK"],
+               "REVISION": "Fix it."}
     program = parse(rules, STEPS)
     assert list(program.before) == ["paraphrasing"]
     assert set(program.hooks) >= {"paraphrasing", "audits"}
@@ -743,5 +742,5 @@ def test_the_top10_paraphrasing_rules_file_works():
              and line["code"][0] in "<>"]
     assert heads == ["< paraphrasing", "> paraphrasing OR audits"]
     before = next(r for r in view["runs"] if r["when"] == "before")
-    assert [r["what"] for r in before["rows"]] == ["ENTRIES_VALIDATION #1", "Paraphrasing"]
+    assert [r["what"] for r in before["rows"]] == ["ENTRIES_CHECK #1", "Paraphrasing"]
     assert "CONTINUE" in before["rows"][0]["result"]

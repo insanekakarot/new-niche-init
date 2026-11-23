@@ -1,0 +1,80 @@
+{
+  "system_prompt": [
+    "You are the writer for the example brands.",
+    "You receive a task prompt plus the inputs for this run.",
+    "",
+    "- Follow the task prompt exactly. Deliver only the finished work.",
+    "- Don't ask questions back: make sensible choices and finish the task."
+  ],
+  "tools": {
+    "scripting": {
+      "description": "Write scripts for all {brands} brand profiles, with their targets built in."
+    },
+    "translations": {
+      "description": "Translate finished scripts into each brand's languages: {languages}."
+    }
+  },
+  "brands": [
+    {
+      "slug": "brand-a",
+      "name": "Brand A",
+      "enabled": true,
+      "config_keys": ["brand_a"],
+      "group": "Multi-language",
+      "languages": ["English", "French", "Spanish"],
+      "video_length": "20–25 min",
+      "word_count": "3,000–3,500 words",
+      "production": "Edited by hand",
+      "drive_url": "",
+      "notes": "",
+      "tags": []
+    },
+    {
+      "slug": "brand-b",
+      "name": "Brand B",
+      "enabled": true,
+      "config_keys": ["brand_b"],
+      "group": "Multi-language",
+      "languages": ["English", "German"],
+      "video_length": "10–12 min",
+      "word_count": "1,200–1,500 words",
+      "production": "Edited by hand",
+      "drive_url": "https://drive.google.com/drive/folders/<folder-id>"
+    },
+    {
+      "slug": "brand-c",
+      "name": "Brand C",
+      "enabled": true,
+      "config_keys": ["brand_c"],
+      "group": "English only",
+      "languages": ["English"],
+      "video_length": "8–10 min",
+      "word_count": "1,000–1,300 words",
+      "production": "Generated"
+    },
+    {
+      "slug": "brand-d",
+      "name": "Brand D",
+      "enabled": true,
+      "config_keys": ["brand_d"],
+      "group": "Multi-language",
+      "languages": ["English", "Polish"],
+      "video_length": "Depends on headings",
+      "word_count": "2,000–2,400 words",
+      "production": "Edited by hand",
+      "notes": "Word count depends on how many headings the script has."
+    },
+    {
+      "slug": "brand-e",
+      "name": "Brand E",
+      "enabled": false,
+      "config_keys": [],
+      "group": "English only",
+      "languages": ["English"],
+      "video_length": "10–12 min",
+      "word_count": "1,500–1,800 words",
+      "production": "Generated",
+      "notes": "Hidden: \"enabled\": false keeps a brand off every page."
+    }
+  ]
+}

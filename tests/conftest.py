@@ -10,6 +10,8 @@ from app.config import settings
 HERE = Path(__file__).parent
 FAKE_CLAUDE = HERE / "fake_claude.py"
 FAKE_CODEX = HERE / "fake_codex.py"
+# The tests' brands file: the example in the repo (neutral brands A-E, E hidden).
+EXAMPLE_BRANDS = HERE.parent / "app" / "brands.example.json"
 
 
 async def _no_wait(_seconds):
@@ -25,6 +27,13 @@ def isolated_storage(tmp_path, monkeypatch):
     """Never touch the real app/admin/inputs, app/output, the Z: drive or the real CLIs."""
     monkeypatch.setattr(settings, "admin_dir", tmp_path / "admin")
     monkeypatch.setattr(settings, "scripts_config_dir", tmp_path / "z" / "_scripts")
+    # The brands file next to it (tmp/z/___brands.json), never the real one.
+    monkeypatch.setattr(settings, "brands_file", None)
+    (tmp_path / "z").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "z" / "___brands.json").write_text(EXAMPLE_BRANDS.read_text(encoding="utf-8"),
+                                                   encoding="utf-8")
+    monkeypatch.setenv("CLAUDE_CLI_SYSTEM_PROMPT", "")  # from the brands file, not .env
+    monkeypatch.setenv("CODEX_CLI_SYSTEM_PROMPT", "")
     monkeypatch.setenv("CLI_OUTPUT_DIR", str(tmp_path / "output"))
     monkeypatch.setenv("CLI_DEFAULT_PROVIDER", "claude")
     monkeypatch.setenv("CLAUDE_CLI_BIN", f"{sys.executable} {FAKE_CLAUDE}")

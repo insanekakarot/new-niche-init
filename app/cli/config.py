@@ -12,31 +12,32 @@ from typing import Literal
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from app import brands_file
 from app.config import APP_DIR
 
 Provider = Literal["claude", "codex"]
 PROVIDERS: tuple[str, ...] = ("claude", "codex")
 
+# The system prompt sent with every run: CLAUDE_CLI_SYSTEM_PROMPT / CODEX_CLI_SYSTEM_PROMPT
+# when set, else "system_prompt" in the private brands file (app/brands_file.py), else this
+# neutral default. See system_prompt_for().
 DEFAULT_SYSTEM_PROMPT = """\
-You are a senior YouTube documentary writer working inside an automated content pipeline.
-You receive a task prompt written by the channel's editors, plus the inputs for this run.
+You are a writer in an automated pipeline. Each run gives you a task and its inputs.
 
-- Follow the task prompt exactly. Its instructions on structure, length, tone and format win.
-- Deliver only the finished work, ready to save as a .txt file: no preamble ("Here is..."),
-  no closing remarks, no questions back to the user. Headings and lists are fine when the
-  task calls for them.
-- Code blocks: if the task asks for its result inside a Markdown code block (```), follow its
-  code-block rules exactly. The pipeline saves only what's inside that block and passes it to
-  the next step. Otherwise don't wrap the answer in code fences.
-- Placeholders in the task prompt such as [INSERT TITLE], [ATTACH SCRIPT] or [] refer to the
-  inputs provided; use the matching input in their place. Text inside << >> refers to
-  something already in this conversation (an earlier step's input or result): use it from
-  there.
-- Never ask for missing information. Make sensible choices and complete the task.
-- Write everything in the requested output language.
-- Accuracy matters: if web tools are available, use them to check names, dates, scores and
-  statistics. Never invent quotes, numbers or events.
+- Do what the task says; its rules on structure, length, tone and format come first.
+- Reply with the finished text only: no introduction, sign-off or questions.
+- If the task wants its result in a Markdown code block, put it there: only the block is kept
+  and handed to the next step.
+- Bracketed placeholders stand for the inputs given with the task, and text between << and >>
+  points to something earlier in this conversation.
+- Don't ask for anything that's missing: decide sensibly and finish.
+- Use the requested output language, and don't make up facts, quotes or numbers.
 """
+
+
+def system_prompt_for(s) -> str:
+    """The system prompt for a run with settings `s` (Claude or Codex)."""
+    return s.system_prompt or brands_file.system_prompt() or DEFAULT_SYSTEM_PROMPT
 
 
 EFFORT_LEVELS: tuple[str, ...] = ("low", "medium", "high", "xhigh", "max", "ultra")
@@ -107,8 +108,9 @@ class ClaudeCliSettings(BaseSettings):
     # Don't save one-off sessions. Scripting steps belong to a project and always keep their
     # session, so the next step can resume the same conversation.
     no_session_persistence: bool = True
-    # Replaces Claude Code's coding-agent system prompt for these runs.
-    system_prompt: str = DEFAULT_SYSTEM_PROMPT
+    # Replaces Claude Code's coding-agent system prompt for these runs. Empty: the brands
+    # file's "system_prompt", else DEFAULT_SYSTEM_PROMPT (system_prompt_for()).
+    system_prompt: str = ""
     # Any extra CLI flags, space-separated (shell quoting allowed).
     extra_args: str = ""
 
@@ -135,8 +137,9 @@ class CodexCliSettings(BaseSettings):
     # shared background server, which runs for days; a fresh process connects anew each time.
     # Sessions still resume the same way.
     no_daemon: bool = True
-    # Codex has no system-prompt flag, so this is placed at the top of every prompt.
-    system_prompt: str = DEFAULT_SYSTEM_PROMPT
+    # Codex has no system-prompt flag, so this is placed at the top of every prompt. Empty: the
+    # brands file's "system_prompt", else DEFAULT_SYSTEM_PROMPT (system_prompt_for()).
+    system_prompt: str = ""
     extra_args: str = ""
 
     model_config = SettingsConfigDict(env_prefix="CODEX_CLI_", env_file=".env", extra="ignore")

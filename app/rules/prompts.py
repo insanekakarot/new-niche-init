@@ -1,7 +1,7 @@
 """The Rule Prompts column: named prompts the Rules run (patterns in app/keys.py).
 
-    STRICT_VALIDATION = \"\"\" Check the script ... STATUS - READY FOR PRODUCTION ... \"\"\"
-    APPLY_CHANGES = \"\"\" Apply all fixes ... inside the code panel only. \"\"\"
+    VALIDATION = \"\"\" Check the script ... STATUS - APPROVED ... \"\"\"
+    REVISION = \"\"\" Make the fixes ... return the script in a code block. \"\"\"
 """
 
 from __future__ import annotations

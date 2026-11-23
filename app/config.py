@@ -18,8 +18,11 @@ class Settings(BaseSettings):
     # Where the processed config is written: <scripts_config_dir>/__scripts.prompt.json
     # Set SCRIPTS_CONFIG_DIR to share it (e.g. a network drive); the default stays in the app.
     scripts_config_dir: Path = APP_DIR / "admin" / "configs" / "_scripts"
-    # Brand slug -> Google Drive folder URL. Private: kept out of git (see brand_links.example.json).
-    brand_links_file: Path = APP_DIR / "brand_links.json"
+    # The private brands file: brand profiles (shown or hidden), their Drive folders, the TSV
+    # brands they belong to, tool texts and the system prompt. Default: ___brands.json in the
+    # folder above SCRIPTS_CONFIG_DIR (the admin configs folder). Never in git; start from
+    # app/brands.example.json. See app/brands_file.py.
+    brands_file: Path | None = None
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

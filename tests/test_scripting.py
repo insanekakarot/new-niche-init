@@ -26,24 +26,24 @@ def kinds(step):
     return {i["name"]: i["kind"] for i in step["inputs"]}
 
 
-def test_nba_inputs_are_classified():
-    nba = views()["nba_brand_1"]
-    assert [f["name"] for f in nba["fields"]] == ["video_title", "inspirational_script", "player_name"]
-    assert {f["name"]: f["optional"] for f in nba["fields"]} == {
-        "video_title": False, "inspirational_script": False, "player_name": True}
+def test_brand_inputs_are_classified():
+    brand = views()["brand_a"]
+    assert [f["name"] for f in brand["fields"]] == ["video_title", "inspirational_script", "guest_name"]
+    assert {f["name"]: f["optional"] for f in brand["fields"]} == {
+        "video_title": False, "inspirational_script": False, "guest_name": True}
 
-    (branch,) = nba["branches"]
+    (branch,) = brand["branches"]
     outline, script, audits = branch["steps"]
     assert kinds(outline) == {"video_title": "user", "inspirational_script": "user",
-                              "player_name": "user", "outline_prompt": "prompt"}
+                              "guest_name": "user", "outline_prompt": "prompt"}
     assert kinds(script)["outline"] == "generated"
     assert kinds(audits)["script"] == "generated"
     assert branch["required"] == ["video_title", "inspirational_script"]
-    assert nba["catalog"]["slug"] == "nba-stories"
+    assert brand["catalog"]["slug"] == "brand-a"
 
 
 def test_conditional_brand_switches_required_fields():
-    t = views()["t_brand_1"]
+    t = views()["brand_d"]
     names = [f["name"] for f in t["fields"]]
     assert names[0] == "competitor_script"
     assert t["fields"][0]["condition"] and t["fields"][0]["multiline"]
@@ -86,7 +86,7 @@ def test_page_lists_config_brands_without_leaking_prompts():
     write_config(config)
     r = client.get("/scripting")
     assert r.status_code == 200
-    for name in ("NBA Brand 1", "A Brand 1", "T Brand 1"):
+    for name in ("Brand A", "Brand C", "Brand D"):
         assert name in r.text
     for entry in config:
         for brand in entry.values():
@@ -109,13 +109,13 @@ def test_page_with_broken_config_shows_error():
 
 
 def test_each_step_lists_its_own_fields():
-    nba = views()["nba_brand_1"]
-    outline, script, audits = nba["branches"][0]["steps"]
+    brand = views()["brand_a"]
+    outline, script, audits = brand["branches"][0]["steps"]
 
     assert [(f["name"], f["kind"], f["required"]) for f in outline["fields"]] == [
         ("video_title", "user", True),
         ("inspirational_script", "user", True),
-        ("player_name", "user", False),
+        ("guest_name", "user", False),
     ]
     assert [p["name"] for p in outline["prompt_inputs"]] == ["outline_prompt"]
 
@@ -130,7 +130,7 @@ def test_each_step_lists_its_own_fields():
 
 
 def test_research_step_fields_in_conditional_brand():
-    t = views()["t_brand_1"]
+    t = views()["brand_d"]
     research = t["branches"][0]["steps"][0]
     assert [f["name"] for f in research["fields"]] == ["video_title"]
     assert [p["name"] for p in research["prompt_inputs"]] == ["research_prompt"]

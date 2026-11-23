@@ -14,7 +14,7 @@ from app.web import projects
 from tests.test_admin import TSV
 
 client = TestClient(app)
-TITLE = "Kobe's 81"
+TITLE = "The Long Night"
 
 
 @pytest.fixture(autouse=True)
@@ -32,11 +32,11 @@ def echoed(text: str) -> dict:
 
 def run(step="outline", inputs=None, **overrides):
     defaults = {
-        "outline": {"video_title": TITLE, "inspirational_script": "Competitor text"},
+        "outline": {"video_title": TITLE, "inspirational_script": "Source text"},
         "script": {"video_title": TITLE},
         "audits": {"video_title": TITLE},
     }
-    body = {"brand": "nba_brand_1", "branch": 0, "step": step, "language": "English",
+    body = {"brand": "brand_a", "branch": 0, "step": step, "language": "English",
             "inputs": defaults[step] if inputs is None else inputs}
     body.update(overrides)
     return client.post("/api/scripting/run", json=body)
@@ -72,7 +72,7 @@ def test_first_step_starts_a_project_with_a_saved_session():
 def test_first_step_always_new_by_default():
     a, b = run().json()["project"], run().json()["project"]
     assert a["id"] != b["id"]
-    assert len(projects.find("nba_brand_1", 0, TITLE)) == 2
+    assert len(projects.find("brand_a", 0, TITLE)) == 2
 
 
 # ------------------------------------------------------------ next steps resume
@@ -113,8 +113,8 @@ def test_pasted_output_is_still_sent_when_continuing():
 
 
 def test_name_match_ignores_case_and_spacing():
-    run(project_name="Kobe   Night")
-    assert run("script", project_name="kobe night").status_code == 200
+    run(project_name="Long   Night")
+    assert run("script", project_name="long night").status_code == 200
 
 
 def test_step_not_run_in_project_must_be_pasted():
@@ -141,7 +141,7 @@ def test_toggle_on_starts_a_new_project_at_any_step():
     assert r.status_code == 200
     assert "--resume" not in argv_of(r)
     assert r.json()["project"]["steps"] == ["script"]
-    assert len(projects.find("nba_brand_1", 0, TITLE)) == 2
+    assert len(projects.find("brand_a", 0, TITLE)) == 2
 
 
 def test_toggle_on_needs_earlier_outputs_pasted():
@@ -180,13 +180,13 @@ def test_same_named_projects_ask_to_choose_then_continue():
 
 
 def test_unknown_project_id_is_not_found():
-    r = run("script", project_id="nba_brand_1__nope__20260101-000000")
+    r = run("script", project_id="brand_a__nope__20260101-000000")
     assert r.status_code == 404 and r.json()["detail"]["code"] == "project_not_found"
 
 
 def test_projects_are_per_brand():
     run()
-    r = run("script", brand="nba_brand_2", inputs={"video_title": TITLE})
+    r = run("script", brand="brand_b", inputs={"video_title": TITLE})
     assert r.status_code == 404
 
 
@@ -240,10 +240,10 @@ def test_failed_resume_suggests_new_project(monkeypatch):
 def test_projects_list_endpoint():
     run()
     run(project_name="Other")
-    listed = client.get("/api/scripting/projects", params={"brand": "nba_brand_1"}).json()
+    listed = client.get("/api/scripting/projects", params={"brand": "brand_a"}).json()
     assert {p["name"] for p in listed["projects"]} == {TITLE, "Other"}
     one = client.get("/api/scripting/projects",
-                     params={"brand": "nba_brand_1", "name": "other"}).json()
+                     params={"brand": "brand_a", "name": "other"}).json()
     assert [p["name"] for p in one["projects"]] == ["Other"]
     assert client.get("/api/scripting/projects", params={"brand": "../x"}).status_code == 400
 

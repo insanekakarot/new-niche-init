@@ -32,17 +32,11 @@ from dataclasses import asdict
 
 from app import keys, rules
 from app.admin import scripts_config as sc
-from app.web.catalog import BRANDS
+from app.web import catalog as brand_catalog
 from app.web.extract import wants_code_block
 
-# Admin config brand key -> catalog brand (languages, length & word-count targets).
-CONFIG_BRAND_MAP: dict[str, str] = {
-    "nba_brand_1": "nba-stories",
-    "nba_brand_2": "nba-games",
-    "a_brand_1": "athlete-records",
-    "t_brand_1": "top-10",
-}
-_CATALOG = {b.slug: b for b in BRANDS}
+# Which brand profile (languages, length & word targets) a TSV brand is, and whether it's
+# shown, both come from the private brands file ("config_keys", "enabled").
 
 # Symbols (all in app/keys.py).
 _OPTIONAL = keys.OPTIONAL_INPUT
@@ -185,7 +179,7 @@ def brand_view(key: str, brand: dict) -> dict:
         branches.append({"condition": cond, "steps": out_steps, "fields": user_fields,
                          "required": required})
 
-    catalog = _CATALOG.get(CONFIG_BRAND_MAP.get(key, ""))
+    catalog = brand_catalog.brand_for_key(key)
     return {
         "key": key,
         "name": brand.get("brand_name") or key,
@@ -203,7 +197,7 @@ def brand_view(key: str, brand: dict) -> dict:
 
 def catalog_for(key: str) -> dict | None:
     """The catalog targets (languages, length, word count) linked to an admin brand key."""
-    catalog = _CATALOG.get(CONFIG_BRAND_MAP.get(key, ""))
+    catalog = brand_catalog.brand_for_key(key)
     return asdict(catalog) if catalog else None
 
 
@@ -236,7 +230,9 @@ def _rule_names(stmts: list) -> list[str]:
 
 
 def find_brand(key: str) -> tuple[dict, dict] | None:
-    """(raw admin config for the brand, its view) or None."""
+    """(raw admin config for the brand, its view) or None (also when the brand is hidden)."""
+    if not brand_catalog.key_enabled(key):
+        return None
     for entry in sc.load_config() or []:
         if key in entry:
             return entry[key], brand_view(key, entry[key])
@@ -343,7 +339,8 @@ def load_brand_views() -> tuple[list[dict], str | None]:
     try:
         for entry in config:
             for key, brand in entry.items():
-                views.append(brand_view(key, brand))
+                if brand_catalog.key_enabled(key):  # "enabled": false in the brands file: hidden
+                    views.append(brand_view(key, brand))
     except (AttributeError, TypeError) as exc:
         return [], f"The scripting config has an unexpected shape: {exc}"
     return views, None

@@ -1,9 +1,15 @@
-"""Static catalog of tools and scripting brand profiles (source: PLAN.md)."""
+"""Tools and brand profiles.
 
-import json
+The tools are part of the app. The brands (names, languages, length and word targets, how
+each is produced, Drive folders, which TSV brands they are, shown or hidden) come only from
+the private brands file, ___brands.json (app/brands_file.py), so none of them are in git.
+"""
+
+from __future__ import annotations
+
 from dataclasses import dataclass, field, replace
 
-from app.config import settings
+from app import brands_file
 
 
 @dataclass(frozen=True)
@@ -31,124 +37,121 @@ class Tool:
 class Brand:
     slug: str
     name: str
-    group: str
-    languages: tuple[str, ...]
-    video_length: str
-    word_count: str
-    production: str
-    drive_url: str = ""  # from app/brand_links.json (private, not in git)
+    group: str = ""
+    languages: tuple[str, ...] = ()
+    video_length: str = ""
+    word_count: str = ""
+    production: str = ""
+    drive_url: str = ""
     notes: str = ""
     tags: tuple[str, ...] = field(default_factory=tuple)
+    # False: hidden on every page and in the Scripting API.
+    enabled: bool = True
+    # The admin TSV brands this profile is (their keys: 'Brand A' -> brand_a).
+    config_keys: tuple[str, ...] = ()
 
 
+# Descriptions: {brands} = number of shown brands, {languages} = their languages besides
+# English. The brands file can replace a tool's description ("tools" -> slug -> description).
 TOOLS: tuple[Tool, ...] = (
-    Tool(
-        "scripting",
-        "Scripting Tool",
-        "📝",
-        "Write scripts for all 9 brand profiles, with each brand's languages, video length "
-        "and word-count targets built in.",
-        category="Writing", status="live", accent="#b3261e",
-    ),
-    Tool(
-        "translations",
-        "Translations Tool",
-        "🌐",
-        "Translate finished scripts into each brand's channel languages: French, Russian, "
-        "Portuguese, Spanish, Czech, German and Polish.",
-        category="Localization", status="planned", accent="#1659c4",
-    ),
-    Tool(
-        "seo",
-        "SEO Tool",
-        "🔎",
-        "Generate titles, descriptions, tags and keywords for every brand and language channel.",
-        category="Discovery", status="planned", accent="#017a54",
-    ),
-    Tool(
-        "editing",
-        "Editing Tool",
-        "🎬",
-        "Track manual edits and Claude-generated videos and animations from script to final cut.",
-        category="Post-production", status="planned", accent="#ad4306",
-    ),
-    Tool(
-        "uploading",
-        "Uploading Tool",
-        "🚀",
-        "Prepare, schedule and upload finished videos to each brand's channels.",
-        category="Publishing", status="planned", accent="#6a3fd6",
-    ),
+    Tool("scripting", "Scripting Tool", "📝",
+         "Write scripts for every brand profile, with each brand's languages, video length "
+         "and word-count targets built in.",
+         category="Writing", status="live", accent="#b3261e"),
+    Tool("translations", "Translations Tool", "🌐",
+         "Translate finished scripts into each brand's languages.",
+         category="Localization", status="planned", accent="#1659c4"),
+    Tool("seo", "SEO Tool", "🔎",
+         "Generate titles, descriptions, tags and keywords for every brand and language.",
+         category="Discovery", status="planned", accent="#017a54"),
+    Tool("editing", "Editing Tool", "🎬",
+         "Track every video's edits from script to final cut.",
+         category="Post-production", status="planned", accent="#ad4306"),
+    Tool("uploading", "Uploading Tool", "🚀",
+         "Prepare, schedule and upload finished videos to each brand's channels.",
+         category="Publishing", status="planned", accent="#6a3fd6"),
 )
 
 TOOLS_BY_SLUG: dict[str, Tool] = {t.slug: t for t in TOOLS}
 
-_NBA_LANGS = ("English", "French", "Russian", "Portuguese", "Spanish")
-_EN = ("English",)
-_MANUAL = "Manual edit"
-_CLAUDE_GEN = "Claude sourcing + video generation"
-_CLAUDE_ANIM = "Claude animation"
-_STD_LEN, _STD_WORDS = "10–12 min", "1,700–1,900 words"
 
-BRANDS: tuple[Brand, ...] = (
-    Brand(
-        "athlete-records", "Athlete Records", "Multi-language",
-        ("English", "French", "Russian", "Portuguese", "Spanish", "Czech", "German"),
-        _STD_LEN, "1,500–1,700 words", _MANUAL,
-    ),
-    Brand(
-        "nba-stories", "NBA Stories, Documentaries & Analysis", "Multi-language",
-        _NBA_LANGS, "25–30 min", "3,750–4,500 words", _CLAUDE_GEN,
-        notes="NBA brand 1",
-    ),
-    Brand(
-        "nba-games", "NBA Current Games & Performances", "Multi-language",
-        _NBA_LANGS, "11–13 min", "1,600–2,000 words", _MANUAL,
-        notes="NBA brand 2",
-    ),
-    Brand(
-        "top-10", "TOP 10 Documentary", "Multi-language",
-        ("English", "German", "Polish", "French", "Portuguese", "Spanish"),
-        "Depends on headings", "2,400–2,700 words", _MANUAL,
-        notes="Word count depends on how many headings the script has.",
-    ),
-    Brand(
-        "zombie-survival", "Zombie Survival", "English only", _EN, _STD_LEN, _STD_WORDS,
-        _CLAUDE_ANIM,
-    ),
-    Brand(
-        "bunker-survival", "Bunker Survival", "English only", _EN, _STD_LEN, _STD_WORDS,
-        _CLAUDE_ANIM,
-    ),
-    Brand(
-        "what-if-1", "What If — Brand 1", "English only", _EN, _STD_LEN, _STD_WORDS,
-        _CLAUDE_ANIM,
-    ),
-    Brand(
-        "what-if-2", "What If — Brand 2", "English only", _EN, _STD_LEN, _STD_WORDS,
-        _CLAUDE_ANIM,
-    ),
-    Brand(
-        "entire-history", "Entire History / Story", "English only", _EN, "20–25 min",
-        "3,500–4,000 words", _CLAUDE_GEN,
-    ),
-)
+def _strings(value) -> tuple[str, ...]:
+    if isinstance(value, str):
+        value = [value]
+    if not isinstance(value, (list, tuple)):
+        return ()
+    return tuple(s for s in (str(v).strip() for v in value) if s)
 
 
-def _with_links(brands: tuple[Brand, ...]) -> tuple[Brand, ...]:
-    """Fill in each brand's Drive folder from the private links file (slug -> URL).
+def _brand(raw) -> Brand | None:
+    """One brand from the file; None (skipped) without a slug and a name."""
+    if not isinstance(raw, dict):
+        return None
+    slug, name = str(raw.get("slug") or "").strip(), str(raw.get("name") or "").strip()
+    if not slug or not name:
+        return None
+    return Brand(
+        slug=slug, name=name,
+        group=str(raw.get("group") or ""),
+        languages=_strings(raw.get("languages")),
+        video_length=str(raw.get("video_length") or ""),
+        word_count=str(raw.get("word_count") or ""),
+        production=str(raw.get("production") or ""),
+        drive_url=str(raw.get("drive_url") or ""),
+        notes=str(raw.get("notes") or ""),
+        tags=_strings(raw.get("tags")),
+        enabled=raw.get("enabled", True) is not False,
+        config_keys=tuple(k.lower() for k in _strings(raw.get("config_keys"))),
+    )
 
-    The links are kept out of git: copy app/brand_links.example.json to the file named by
-    BRAND_LINKS_FILE (default app/brand_links.json) and put the real folder URLs in it.
-    Brands without a link just don't show the "Open brand folder" button.
-    """
-    try:
-        links = json.loads(settings.brand_links_file.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return brands
-    if not isinstance(links, dict):
-        return brands
-    return tuple(replace(b, drive_url=str(links.get(b.slug) or "")) for b in brands)
+
+def all_brands() -> tuple[Brand, ...]:
+    """Every brand in the file, shown or hidden, in file order."""
+    raw = brands_file.load().get("brands")
+    brands = (_brand(b) for b in raw) if isinstance(raw, list) else ()
+    return tuple(b for b in brands if b)
 
 
-BRANDS = _with_links(BRANDS)
+def brands() -> tuple[Brand, ...]:
+    """The brands to show ("enabled": true or not set)."""
+    return tuple(b for b in all_brands() if b.enabled)
+
+
+def brand_for_key(config_key: str) -> Brand | None:
+    """The profile (shown or hidden) of an admin TSV brand, by its key; None if none."""
+    key = (config_key or "").lower()
+    return next((b for b in all_brands() if key in b.config_keys), None)
+
+
+def key_enabled(config_key: str) -> bool:
+    """Whether a TSV brand is shown: hidden only when its profile says "enabled": false."""
+    brand = brand_for_key(config_key)
+    return brand is None or brand.enabled
+
+
+def languages() -> list[str]:
+    """The shown brands' languages, English first."""
+    return sorted({lang for b in brands() for lang in b.languages},
+                  key=lambda lang: (lang != "English", lang))
+
+
+def tools() -> tuple[Tool, ...]:
+    """The tools, with descriptions from the brands file where it has one."""
+    texts = brands_file.load().get("tools")
+    texts = texts if isinstance(texts, dict) else {}
+    shown = brands()
+    others = ", ".join(lang for lang in languages() if lang != "English")
+    out = []
+    for tool in TOOLS:
+        own = texts.get(tool.slug)
+        desc = brands_file.text(own.get("description")) if isinstance(own, dict) else ""
+        desc = (desc or tool.description).replace("{brands}", str(len(shown)))
+        if "{languages}" in desc:
+            desc = desc.replace("{languages}", others) if others else \
+                desc.replace(": {languages}", "").replace("{languages}", "")
+        out.append(replace(tool, description=desc))
+    return tuple(out)
+
+
+def tool(slug: str) -> Tool | None:
+    return next((t for t in tools() if t.slug == slug), None)

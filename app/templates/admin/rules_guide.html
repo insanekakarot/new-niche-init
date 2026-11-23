@@ -71,11 +71,11 @@
   <div class="mt-4 grid gap-3 sm:grid-cols-2">
     <div class="rounded-lg border border-line bg-card p-4">
       <div class="label text-faint">Rule Prompts column</div>
-      <pre class="mt-2 whitespace-pre-wrap break-words font-mono text-[12.5px] leading-6 text-ink"><span class="font-semibold">STRICT_VALIDATION</span> = """ Check the script …
-Use exactly one of: <span class="text-emerald-700">STATUS - READY FOR PRODUCTION</span>
-or <span class="text-emerald-700">STATUS - NOT READY FOR PRODUCTION</span> """
+      <pre class="mt-2 whitespace-pre-wrap break-words font-mono text-[12.5px] leading-6 text-ink"><span class="font-semibold">VALIDATION</span> = """ Check the script …
+Use exactly one of: <span class="text-emerald-700">STATUS - APPROVED</span>
+or <span class="text-emerald-700">STATUS - NOT APPROVED</span> """
 
-<span class="font-semibold">APPLY_CHANGES</span> = """ Apply all suggested fixes …
+<span class="font-semibold">REVISION</span> = """ Apply all suggested fixes …
 Narration: <span class="text-sky-700">{{ '{{' }} words_range {{ '}}' }}</span> words.
 Output the script in a code block. """</pre>
     </div>
@@ -83,9 +83,9 @@ Output the script in a code block. """</pre>
       <div class="label text-faint">Rules column</div>
       <pre class="mt-2 whitespace-pre-wrap break-words font-mono text-[12.5px] leading-6 text-ink"><span class="font-semibold text-accent">&gt;</span> audits
 <span class="font-semibold text-accent">LOOP</span> (<span class="font-semibold text-accent">MAX</span> <span class="text-amber-700">5</span>) {
-    <span class="font-semibold">STRICT_VALIDATION</span>;
-    <span class="font-semibold text-accent">IF</span> (<span class="text-sky-700">TAG</span> == <span class="text-emerald-700">"READY FOR PRODUCTION"</span>) { <span class="font-semibold text-accent">BREAK</span>; }
-    <span class="font-semibold">APPLY_CHANGES</span>;
+    <span class="font-semibold">VALIDATION</span>;
+    <span class="font-semibold text-accent">IF</span> (<span class="text-sky-700">TAG</span> == <span class="text-emerald-700">"APPROVED"</span>) { <span class="font-semibold text-accent">BREAK</span>; }
+    <span class="font-semibold">REVISION</span>;
 }</pre>
       <p class="mt-2 text-xs text-faint">One line or many: line breaks and spaces don't matter.</p>
     </div>
@@ -106,8 +106,8 @@ Output the script in a code block. """</pre>
                     ("( … )", "Group conditions, e.g. (TAG == \"READY\" AND RATING >= 9) OR RUNS > 10")]) }}
     {{ key_table("Variables", keys.RULE_VARIABLES.items() | list) }}
     {{ key_table("Status lines: in a check prompt and its answer", [
-         ("STATUS - READY FOR PRODUCTION", "TAG = \"READY FOR PRODUCTION\""),
-         ("STATUS - NOT READY FOR PRODUCTION", "TAG = \"NOT READY FOR PRODUCTION\""),
+         ("STATUS - APPROVED", "TAG = \"APPROVED\""),
+         ("STATUS - NOT APPROVED", "TAG = \"NOT APPROVED\""),
          ("Title Satisfied: True", "TAG = \"TRUE\" (Title Satisfied: False gives \"FALSE\")"),
          ("Overall rating: 8.5/10", "RATING = 8.5"),
        ]) }}
@@ -124,7 +124,7 @@ Output the script in a code block. """</pre>
   <!-- Good to know -->
   <h2 class="mt-10 text-lg font-semibold text-ink">Good to know</h2>
   <ul class="mt-3 grid gap-2 text-sm leading-6 text-muted">
-    <li>• <b class="text-ink">MAX counts passes.</b> One pass = the check, plus a fix if needed. With <code>LOOP (MAX 5)</code> the 5th fix is never checked; use <code>MAX 6</code> with <code>ELSE IF (ITERATION == 6) { STOP; }</code> to check every fix.</li>
+    <li>• <b class="text-ink">MAX counts passes.</b> One pass = the check, plus a fix if needed. With <code>LOOP (MAX 3)</code> the 3rd fix is never checked; use <code>MAX 4</code> with <code>ELSE IF (ITERATION == 4) { STOP; }</code> to check every fix.</li>
     <li>• <b class="text-ink">REVALIDATE</b> ends the pass; the next pass starts with the check again.</li>
     <li>• <b class="text-ink">TAG is compared exactly.</b> If a rule says <code>TAG == "TRUE"</code>, the check prompt must ask for that word in its status line. The upload warns you when no check prompt does.</li>
     <li>• <b class="text-ink">Every name you run must be declared</b> in Rule Prompts, or the upload stops with an error.</li>

@@ -33,22 +33,22 @@ Other too:\vOld Mound\vOld Walls, Nowhere.
 • Island Heads
 """
 
-ENTRIES_VALIDATION = (
-    'ENTRIES_VALIDATION = """ Video Title: {{ video_title }} Previously Used Entries: '
-    "{{ used_entries }} Source Script: {{ source_script }} OUTPUT FORMAT ... "
+ENTRIES_CHECK = (
+    'ENTRIES_CHECK = """ Title: {{ video_title }} Entries covered before: '
+    "{{ used_entries }} Transcript: {{ source_script }} Reply with ... "
     'NEXT MOVE - [CONTINUE or RESEARCH] """')
 T_ROW = {
-    "Research": "Research {{video_title}}. Previously Used Entries: {{used_entries}} END",
+    "Research": "Research {{video_title}}. Entries covered before: {{used_entries}} END",
     "Outline": "Outline from {{research}}.", "Script": "Script from {{research}}.",
     "Audits": "Audit it.",
     "Paraphrasing": "Title {{video_title}}. SOURCE SCRIPT: {{competitor_script}} "
                     "USED: {{used_entries}} Put it in a code block.",
-    "Brand": "T Brand 1",
+    "Brand": "Brand D",
     "Steps": "if (!competitor_script) { Research + Outline + Script + Audits } "
              "else { Paraphrasing }",
-    "Rules": '< paraphrasing ENTRIES_VALIDATION; IF (TAG == "CONTINUE") { STOP; } '
+    "Rules": '< paraphrasing ENTRIES_CHECK; IF (TAG == "CONTINUE") { STOP; } '
              'ELSE IF (TAG == "RESEARCH") { CANCEL; }',
-    "Rule Prompts": ENTRIES_VALIDATION,
+    "Rule Prompts": ENTRIES_CHECK,
     "Inputs": "research = video_title + research_prompt "
               "outline = video_title + research_content + outline_prompt "
               "script = video_title + outline_content + script_prompt "
@@ -62,7 +62,7 @@ def t_brand(tmp_path, monkeypatch):
     result = sc.parse_tsv(tsv([T_ROW]))
     sc.config_path().parent.mkdir(parents=True, exist_ok=True)
     sc.config_path().write_text(json.dumps(result.config), encoding="utf-8")
-    ue.save("t_brand_1", ue.parse(DOC), source="https://docs.google.com/document/d/x/edit")
+    ue.save("brand_d", ue.parse(DOC), source="https://docs.google.com/document/d/x/edit")
     monkeypatch.setenv("FAKE_CLAUDE_MODE", "codeblock")
     monkeypatch.setenv("FAKE_RULES_COUNTER", str(tmp_path / "rule_counts.json"))
     return result
@@ -84,18 +84,18 @@ def test_parse_the_doc_format():
 
 
 def test_saved_next_to_the_prompts_config_and_kept_per_brand():
-    ue.save("t_brand_1", ue.parse(DOC), source="doc")
-    ue.save("nba_brand_2", ue.parse("Sample Game"))
+    ue.save("brand_d", ue.parse(DOC), source="doc")
+    ue.save("brand_b", ue.parse("Sample Item"))
     assert ue.path().parent == sc.config_path().parent and ue.path().name == "__used_entries.json"
     data = json.loads(ue.path().read_text(encoding="utf-8"))
-    assert set(data["brands"]) == {"t_brand_1", "nba_brand_2"}
-    assert data["brands"]["t_brand_1"]["source"] == "doc"
-    assert ue.value_for("nba_brand_2") == "- Sample Game" and ue.value_for("nope") == ue.EMPTY
+    assert set(data["brands"]) == {"brand_d", "brand_b"}
+    assert data["brands"]["brand_d"]["source"] == "doc"
+    assert ue.value_for("brand_b") == "- Sample Item" and ue.value_for("nope") == ue.EMPTY
 
 
 def test_upload_has_no_warnings_for_the_new_names(t_brand):
     assert t_brand.warnings == []
-    assert is_check(t_brand.config[0]["t_brand_1"]["rule_prompts"]["ENTRIES_VALIDATION"])
+    assert is_check(t_brand.config[0]["brand_d"]["rule_prompts"]["ENTRIES_CHECK"])
 
 
 def _admin():
@@ -111,17 +111,17 @@ def test_admin_page_shows_and_saves_entries(t_brand, monkeypatch):
     monkeypatch.setattr(settings, "admin_api_key", "k")
     c = _admin()
     page = c.get("/admin/scripts/entries").text
-    assert "Used entries" in page and "T Brand 1" in page and "Lost Tomb of King Beta" in page
+    assert "Used entries" in page and "Brand D" in page and "Lost Tomb of King Beta" in page
     assert "__used_entries.json" in page
     check = c.post("/admin/scripts/entries?dry_run=true",
-                   json={"brand": "t_brand_1", "text": "# New\nPlace One\nPlace Two"}).json()
+                   json={"brand": "brand_d", "text": "# New\nPlace One\nPlace Two"}).json()
     assert check["saved"] is False and check["summary"]["unique"] == 2
-    assert ue.summary("t_brand_1", ue.for_brand("t_brand_1"))["unique"] == 7   # unchanged
+    assert ue.summary("brand_d", ue.for_brand("brand_d"))["unique"] == 7   # unchanged
     saved = c.post("/admin/scripts/entries",
-                   json={"brand": "t_brand_1", "text": "# New\nPlace One\nPlace Two"}).json()
-    assert saved["saved"] and ue.value_for("t_brand_1") == "- Place One\n- Place Two"
-    assert ue.for_brand("t_brand_1")["source"] == "https://docs.google.com/document/d/x/edit"
-    assert c.get("/admin/scripts/entries.json").json()["brands"]["t_brand_1"]["groups"][0][
+                   json={"brand": "brand_d", "text": "# New\nPlace One\nPlace Two"}).json()
+    assert saved["saved"] and ue.value_for("brand_d") == "- Place One\n- Place Two"
+    assert ue.for_brand("brand_d")["source"] == "https://docs.google.com/document/d/x/edit"
+    assert c.get("/admin/scripts/entries.json").json()["brands"]["brand_d"]["groups"][0][
         "entries"] == ["Place One", "Place Two"]
     assert c.post("/admin/scripts/entries", json={"brand": "zzz", "text": ""}).status_code == 404
 
@@ -130,7 +130,7 @@ def test_entries_api_needs_the_admin_key(t_brand, monkeypatch):
     from app.config import settings
     monkeypatch.setattr(settings, "admin_api_key", "k")   # a key is set; this client has none
     assert TestClient(app).post("/admin/scripts/entries",
-                                json={"brand": "t_brand_1", "text": "x"}).status_code == 401
+                                json={"brand": "brand_d", "text": "x"}).status_code == 401
     assert TestClient(app).get("/admin/scripts/entries.json").status_code == 401
 
 
@@ -150,14 +150,14 @@ def test_next_move_is_a_status_line():
 
 
 def test_view_labels_the_source_script_and_offers_video(t_brand):
-    _, view = find_brand("t_brand_1")
+    _, view = find_brand("brand_d")
     para = view["branches"][1]["steps"][0]
     field = next(f for f in para["fields"] if f["name"] == "competitor_script")
     assert field["label"] == "Source script" and field["transcript"] and field["multiline"]
     research = view["branches"][0]["steps"][0]
     assert research["builtin_placeholders"] == ["used_entries"]
     assert "used_entries" not in research["unknown_placeholders"]
-    assert para["rules_before"] == ["ENTRIES_VALIDATION"]
+    assert para["rules_before"] == ["ENTRIES_CHECK"]
 
 
 # ------------------------------------------------------------ the runs use them
@@ -171,28 +171,28 @@ def _sent(data):
 
 def test_research_prompt_gets_the_used_entries(t_brand):
     r = client.post("/api/scripting/run", json={
-        "brand": "t_brand_1", "branch": 0, "step": "research", "language": "English",
+        "brand": "brand_d", "branch": 0, "step": "research", "language": "English",
         "new_project": True, "inputs": {"video_title": "Top 6 Sample Places"}})
     assert r.status_code == 200, r.text
     prompt = _sent(r.json())
-    assert "Previously Used Entries: - King Alpha’s Sealed Tomb\n- Lost Tomb of King Beta" \
+    assert "Entries covered before: - King Alpha’s Sealed Tomb\n- Lost Tomb of King Beta" \
         in prompt and "{{used_entries}}" not in prompt
 
 
 def test_paraphrasing_validates_entries_first_with_source_script_filled(t_brand):
     from app.web import projects
     r = client.post("/api/scripting/run", json={
-        "brand": "t_brand_1", "branch": 1, "step": "paraphrasing", "language": "English",
+        "brand": "brand_d", "branch": 1, "step": "paraphrasing", "language": "English",
         "new_project": True,
         "inputs": {"video_title": "Top 6 Sample Places", "competitor_script": "THE TRANSCRIPT"}})
     assert r.status_code == 200, r.text
     data = r.json()
     before = data["rules_before"]
-    assert [(e["name"], e["tag"]) for e in before["log"]] == [("ENTRIES_VALIDATION", "CONTINUE")]
+    assert [(e["name"], e["tag"]) for e in before["log"]] == [("ENTRIES_CHECK", "CONTINUE")]
     folder = (projects.projects_dir() / data["project"]["id"] / "rules"
               / f"before-paraphrasing-{before['id']}")
-    rule = (folder / "01-entries_validation.prompt.txt").read_text(encoding="utf-8")
-    assert "Source Script: THE TRANSCRIPT" in rule and "- Stone Lion" in rule
+    rule = (folder / "01-entries_check.prompt.txt").read_text(encoding="utf-8")
+    assert "Transcript: THE TRANSCRIPT" in rule and "- Stone Lion" in rule
     prompt = _sent(data)
     assert "SOURCE SCRIPT: THE TRANSCRIPT" in prompt and "USED: - King Alpha" in prompt
 
@@ -200,7 +200,7 @@ def test_paraphrasing_validates_entries_first_with_source_script_filled(t_brand)
 def test_research_answer_cancels_paraphrasing(t_brand, monkeypatch):
     monkeypatch.setenv("FAKE_NEXT_MOVE", "RESEARCH")
     r = client.post("/api/scripting/run", json={
-        "brand": "t_brand_1", "branch": 1, "step": "paraphrasing", "language": "English",
+        "brand": "brand_d", "branch": 1, "step": "paraphrasing", "language": "English",
         "new_project": True,
         "inputs": {"video_title": "Top 6 Sample Places", "competitor_script": "THE TRANSCRIPT"}})
     assert r.status_code == 409 and r.json()["detail"]["code"] == "step_cancelled"

@@ -105,9 +105,9 @@ def test_missing_binary(monkeypatch):
 # ------------------------------------------------------------ run endpoint
 
 def run(**overrides):
-    body = {"brand": "nba_brand_1", "branch": 0, "step": "outline", "language": "French",
-            "inputs": {"video_title": "Kobe's 81", "inspirational_script": "Competitor text",
-                       "player_name": "Kobe Bryant", "unrelated": "dropped"}}
+    body = {"brand": "brand_a", "branch": 0, "step": "outline", "language": "French",
+            "inputs": {"video_title": "The Long Night", "inspirational_script": "Source text",
+                       "guest_name": "Sam Rivers", "unrelated": "dropped"}}
     body.update(overrides)
     return client.post("/api/scripting/run", json=body)
 
@@ -120,35 +120,35 @@ def test_run_step_builds_prompt_saves_and_serves_txt(config):
     prompt = sent["prompt"]
 
     assert prompt.startswith("# Task\nOutline P")           # admin prompt from config
-    assert '<input name="video_title" label="Video title">\nKobe\'s 81\n</input>' in prompt
-    assert "Competitor text" in prompt and "Kobe Bryant" in prompt
+    assert '<input name="video_title" label="Video title">\nThe Long Night\n</input>' in prompt
+    assert "Source text" in prompt and "Sam Rivers" in prompt
     assert "dropped" not in prompt                           # unknown inputs ignored
     assert "Output language: French" in prompt
-    assert "3,750–4,500 words" in prompt                     # brand targets from catalog
+    assert "3,000–3,500 words" in prompt                     # brand targets from catalog
     assert "Outline P" in prompt and "Script P" not in prompt
     assert sent["argv"][sent["argv"].index("--model") + 1] == "claude-sonnet-5"
 
     f = data["file"]
-    assert f["step"] == "outline" and f["name"].startswith("nba_brand_1__kobe-s-81__")
+    assert f["step"] == "outline" and f["name"].startswith("brand_a__the-long-night__")
     path = get_cli_settings().output_dir / "outline" / f["name"]
     assert path.read_text(encoding="utf-8") == data["text"] + "\n"
     meta = json.loads(path.with_suffix(".json").read_text(encoding="utf-8"))
-    assert meta["language"] == "French" and meta["inputs"]["video_title"] == "Kobe's 81"
+    assert meta["language"] == "French" and meta["inputs"]["video_title"] == "The Long Night"
 
     dl = client.get(f["url"])
     assert dl.status_code == 200
     assert "attachment" in dl.headers["content-disposition"]
     assert dl.text == data["text"] + "\n"
 
-    listed = client.get("/api/scripting/outputs", params={"step": "outline", "brand": "nba_brand_1"})
+    listed = client.get("/api/scripting/outputs", params={"step": "outline", "brand": "brand_a"})
     assert [o["name"] for o in listed.json()["outputs"]] == [f["name"]]
-    assert listed.json()["outputs"][0]["title"] == "Kobe's 81"
+    assert listed.json()["outputs"][0]["title"] == "The Long Night"
 
 
 def test_saved_outline_feeds_script_step_manually(config):
     outline = run().json()
     text = client.get(outline["file"]["url"] + "?inline=true").text
-    r = run(step="script", inputs={"video_title": "Kobe's 81", "outline": text})
+    r = run(step="script", inputs={"video_title": "The Long Night", "outline": text})
     assert r.status_code == 200
     prompt = echoed(r.json()["text"])["prompt"]
     assert prompt.startswith("# Task\nScript P")
@@ -178,7 +178,7 @@ def test_run_cli_error_is_502_and_nothing_saved(config, monkeypatch):
 
 
 def test_conditional_branch_runs_paraphrasing(config):
-    r = run(brand="t_brand_1", branch=1, step="paraphrasing", language="English",
+    r = run(brand="brand_d", branch=1, step="paraphrasing", language="English",
             inputs={"competitor_script": "Their script"}, project_name="Top 10 rivals")
     assert r.status_code == 200, r.text
     assert "Para P" in echoed(r.json()["text"])["prompt"]

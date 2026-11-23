@@ -10,7 +10,7 @@ Where each one is written in the TSV:
                   if (!competitor_script) { A + B } else { C }
                                                        pick a flow by whether an input is filled
     Inputs        script = video_title + outline + script_prompt
-                  player_name(optional)                may be left empty
+                  guest_name(optional)                may be left empty
                   <step>_prompt                        that step's prompt from its column
                   <step> / <step>_content              an earlier step's result
     Prompts       {{name}}                             replaced with that input's value
@@ -49,8 +49,8 @@ CONTENT_SUFFIX = "_content"  # outline_content = the Outline step's result (same
 
 # {{name}} -> that input's value. Spaces inside are fine: {{ words_range }}.
 PLACEHOLDER = re.compile(r"\{\{\s*([A-Za-z_]\w*)\s*\}\}")
-# Names that mean the same input: the competitor's transcript is the source script (and the
-# inspirational script). {{ any of them }} is filled from whichever one the step has.
+# Names that mean the same input (the source script). {{ any of them }} is filled from
+# whichever one the step has.
 SAME_INPUT: tuple[tuple[str, ...], ...] = (
     ("source_script", "competitor_script", "inspirational_script"),
 )
@@ -77,11 +77,11 @@ CODE_FENCE = re.compile(r"^[ \t]{0,3}(?P<fence>`{3,}|~{3,})[ \t]*(?P<info>[^`\s]
 
 # Filled in for {{ }} in rule prompts (and usable in step prompts), besides the step's inputs.
 BUILTIN_PLACEHOLDERS: dict[str, str] = {
-    "words_range": "The brand's word target without 'words', e.g. 1,600–2,000.",
-    "word_count": "The brand's word target as written, e.g. 1,600–2,000 words.",
-    "video_length": "The brand's video length, e.g. 11–13 min.",
+    "words_range": "The brand's word target without 'words', e.g. 1,200–1,500.",
+    "word_count": "The brand's word target as written, e.g. 1,200–1,500 words.",
+    "video_length": "The brand's video length, e.g. 10–12 min.",
     "language": "The output language picked for the run.",
-    "brand_name": "The brand's name, e.g. NBA Brand 2.",
+    "brand_name": "The brand's name, e.g. Brand B.",
     "project_name": "The project's name.",
     "step": "The step the rules run after, e.g. Audits.",
     "used_entries": "The brand's previously used entries, one per line (Admin → Used entries).",
@@ -89,21 +89,21 @@ BUILTIN_PLACEHOLDERS: dict[str, str] = {
 
 # ============================================================== Rule Prompts column
 
-# STRICT_VALIDATION = """ ... """   (names: letters, digits, _; case doesn't matter)
+# VALIDATION = """ ... """   (names: letters, digits, _; case doesn't matter)
 RULE_PROMPT = re.compile(r'([A-Za-z_]\w*)\s*=\s*"""(.*?)"""', re.DOTALL)
 
 # The label of a status line, before '-' or ':':  'STATUS - ...',  'Title Satisfied: True',
 # 'Satisfied: False', 'NEXT MOVE - CONTINUE'. Add a label here to make prompts that use it checks.
 STATUS_LABEL = r"\b(?:STATUS|(?:TITLE\s+)?SATISFIED|NEXT\s+MOVE)\s*[-–—:]\s*"
-# A rule prompt that defines a status line ("STATUS - READY FOR PRODUCTION", "Title Satisfied:
-# True", "NEXT MOVE - [CONTINUE or RESEARCH]") is a *check*: its answer sets TAG (and RATING)
+# A rule prompt that defines a status line ("STATUS - APPROVED", "Title Satisfied:
+# True", "NEXT MOVE - [CONTINUE or SKIP]") is a *check*: its answer sets TAG (and RATING)
 # and the script stays as it is. Any other rule prompt is a *revision*: the code block of its
 # answer becomes the current script.
 CHECK_PROMPT = re.compile(STATUS_LABEL + r"\[?[A-Z]", re.IGNORECASE)
-# The tag in a check's answer: 'STATUS - NOT READY FOR PRODUCTION' -> 'NOT READY FOR PRODUCTION',
+# The tag in a check's answer: 'STATUS - NOT APPROVED' -> 'NOT APPROVED',
 # 'Title Satisfied: True' -> 'TRUE'.
 STATUS_LINE = re.compile(STATUS_LABEL + r"\[?(?P<tag>[A-Za-z][A-Za-z ]*[A-Za-z])", re.IGNORECASE)
-# A check's tag that counts as a pass: 'READY FOR PRODUCTION', 'TRUE', 'YES', 'PASS', ...
+# A check's tag that counts as a pass: 'APPROVED', 'TRUE', 'YES', 'PASS', ...
 # (used for the green / amber status, not by the rules themselves: they compare TAG as written).
 PASS_TAG = re.compile(r"^(?:READY\b.*|TRUE|YES|PASS(?:ED)?|SATISFIED|APPROVED|CONTINUE)$",
                       re.IGNORECASE)
@@ -127,7 +127,7 @@ HOOK_BEFORE = "<"
 
 RULE_KEYWORDS: dict[str, str] = {
     "NAME;": "Run the rule prompt NAME (declared in Rule Prompts) in the project's "
-             "conversation, e.g. STRICT_VALIDATION;",
+             "conversation, e.g. VALIDATION;",
     "RUN NAME;": "Same as NAME; (reads better before a name that looks like a keyword).",
     "LOOP { ... } UNTIL (cond);": "Repeat the block, checking cond after each pass; stop "
                                   "when it is true.",
@@ -167,7 +167,7 @@ RULE_OPERATORS: dict[str, str] = {
 COMPARISONS = ("==", "!=", ">=", "<=", ">", "<", "CONTAINS")
 
 RULE_VARIABLES: dict[str, str] = {
-    "TAG": 'The status from the latest check, e.g. "READY FOR PRODUCTION" ("" before any).',
+    "TAG": 'The status from the latest check, e.g. "APPROVED" ("" before any).',
     "RATING": "The rating number from the latest check (0 if it gave none).",
     "WORDS": "Words in the current script.",
     "ITERATION": "The current pass of the innermost loop (1, 2, ...); 0 outside loops. In a "
@@ -181,37 +181,37 @@ MAX_RUNS = 20          # never more rule prompts than this per hook
 
 # Every example here must parse (tests/test_rules.py checks).
 RULE_EXAMPLES: list[tuple[str, str]] = [
-    ("Validate after Audits; fix and check again until ready (the NBA Brand 2 rule).",
-     ('> audits LOOP { STRICT_VALIDATION; IF (TAG == "READY FOR PRODUCTION") { BREAK; } '
-      'ELSE { APPLY_CHANGES; REVALIDATE; } } UNTIL (TAG == "READY FOR PRODUCTION");')),
+    ("Validate after Audits; fix and check again until ready.",
+     ('> audits LOOP { VALIDATION; IF (TAG == "APPROVED") { BREAK; } '
+      'ELSE { REVISION; REVALIDATE; } } UNTIL (TAG == "APPROVED");')),
     ("The same, with at most 5 passes.",
-     ('> audits LOOP (MAX 5) { STRICT_VALIDATION; IF (TAG == "READY FOR PRODUCTION") '
-      "{ BREAK; } APPLY_CHANGES; }")),
-    (("Two checks: when it's READY, also check the title; fix and start again if either "
-      "fails. 6 checks / 5 fixes at most, and the last fix is always checked."),
-     ('> audits LOOP (MAX 6) { STRICT_VALIDATION; IF (TAG == "READY FOR PRODUCTION") { '
-      'TITLE_SATISFACTION; IF (TAG == "TRUE") { BREAK; } ELSE IF (ITERATION == 6) { STOP; } '
-      'ELSE { APPLY_CHANGES; REVALIDATE; } } ELSE IF (ITERATION == 6) { STOP; } '
-      'ELSE { APPLY_CHANGES; REVALIDATE; } } UNTIL (TAG == "TRUE");')),
+     ('> audits LOOP (MAX 5) { VALIDATION; IF (TAG == "APPROVED") '
+      "{ BREAK; } REVISION; }")),
+    (("Two checks: when it's APPROVED, also check the title; fix and start again if either "
+      "fails. 4 checks / 3 fixes at most, and the last fix is always checked."),
+     ('> audits LOOP (MAX 4) { VALIDATION; IF (TAG == "APPROVED") { '
+      'TITLE_CHECK; IF (TAG == "TRUE") { BREAK; } ELSE IF (ITERATION == 4) { STOP; } '
+      'ELSE { REVISION; REVALIDATE; } } ELSE IF (ITERATION == 4) { STOP; } '
+      'ELSE { REVISION; REVALIDATE; } } UNTIL (TAG == "TRUE");')),
     ("Before the first step: research first; the Outline prompt can use {{ research }}.",
      "< outline RESEARCH;"),
     ("Before and after: research before Outline, validate after Audits.",
-     ('< outline RESEARCH; > audits LOOP (MAX 3) { STRICT_VALIDATION; '
-      'IF (TAG == "READY FOR PRODUCTION") { BREAK; } APPLY_CHANGES; }')),
+     ('< outline RESEARCH; > audits LOOP (MAX 3) { VALIDATION; '
+      'IF (TAG == "APPROVED") { BREAK; } REVISION; }')),
     (("Check the entries before Paraphrasing: go on, or don't paraphrase; then validate after "
       "Paraphrasing in one flow and after Audits in the other."),
-     ('< paraphrasing ENTRIES_VALIDATION; IF (TAG == "CONTINUE") { STOP; } '
-      'ELSE IF (TAG == "RESEARCH") { CANCEL; } '
-      '> paraphrasing OR audits LOOP (MAX 6) { STRICT_VALIDATION; '
-      'IF (TAG == "READY FOR PRODUCTION") { BREAK; } APPLY_CHANGES; }')),
+     ('< paraphrasing ENTRIES_CHECK; IF (TAG == "CONTINUE") { STOP; } '
+      'ELSE IF (TAG == "SKIP") { CANCEL; } '
+      '> paraphrasing OR audits LOOP (MAX 4) { VALIDATION; '
+      'IF (TAG == "APPROVED") { BREAK; } REVISION; }')),
     ("Check once; fix only if it isn't ready (no loop).",
-     '> audits STRICT_VALIDATION; IF (TAG != "READY FOR PRODUCTION") { APPLY_CHANGES; }'),
+     '> audits VALIDATION; IF (TAG != "APPROVED") { REVISION; }'),
     ("Keep fixing while the rating is low (ITERATION in a WHILE check = passes done).",
-     ("> audits WHILE (RATING < 9 AND ITERATION < 3) { STRICT_VALIDATION; "
-      "IF (RATING >= 9) { BREAK; } APPLY_CHANGES; }")),
+     ("> audits WHILE (RATING < 9 AND ITERATION < 3) { VALIDATION; "
+      "IF (RATING >= 9) { BREAK; } REVISION; }")),
     ("Fix the length when the script is outside the word range.",
-     "> script IF (WORDS < 1600 OR WORDS > 2000) { FIX_LENGTH; }"),
+     "> script IF (WORDS < 1200 OR WORDS > 1500) { FIX_LENGTH; }"),
     ("Rules after two steps; text before the first '>' is guidance added to every prompt.",
-     ("Always write in a calm tone. > outline OUTLINE_CHECK; > audits STRICT_VALIDATION; "
-      'IF (TAG CONTAINS "NOT") { APPLY_CHANGES; STRICT_VALIDATION; }')),
+     ("Always write in a calm tone. > outline OUTLINE_CHECK; > audits VALIDATION; "
+      'IF (TAG CONTAINS "NOT") { REVISION; VALIDATION; }')),
 ]

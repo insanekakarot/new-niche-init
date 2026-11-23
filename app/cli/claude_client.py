@@ -14,7 +14,13 @@ import json
 import shlex
 
 from app.cli.common import CliError, CliResult, run_process, run_slot, tail
-from app.cli.config import CLAUDE_EFFORTS, ClaudeCliSettings, get_claude_settings, get_cli_settings
+from app.cli.config import (
+    CLAUDE_EFFORTS,
+    ClaudeCliSettings,
+    get_claude_settings,
+    get_cli_settings,
+    system_prompt_for,
+)
 
 
 def build_command(s: ClaudeCliSettings, resume: str | None = None,
@@ -22,7 +28,7 @@ def build_command(s: ClaudeCliSettings, resume: str | None = None,
     """`resume` continues that session; `keep_session` saves the session so it can be resumed."""
     cmd = [*shlex.split(s.bin), "-p", "--output-format", "json",
            "--model", s.model, "--effort", s.effort,
-           "--system-prompt", s.system_prompt]
+           "--system-prompt", system_prompt_for(s)]
     if resume:
         cmd += ["--resume", resume]
     tools = [t.strip() for t in s.tools.split(",") if t.strip()]
@@ -92,7 +98,8 @@ def build_payload(prompt: str, settings: ClaudeCliSettings | None = None,
     s = with_effort(settings or get_claude_settings(), effort)
     return {"provider": "claude", "argv": build_command(s, resume, keep_session),
             "stdin": prompt, "resume": resume,
-            "system_prompt": s.system_prompt, "system_prompt_via": "--system-prompt argument"}
+            "system_prompt": system_prompt_for(s),
+            "system_prompt_via": "--system-prompt argument"}
 
 
 async def run_claude(prompt: str, settings: ClaudeCliSettings | None = None,

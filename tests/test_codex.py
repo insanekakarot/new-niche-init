@@ -90,7 +90,8 @@ def test_parse_events():
 def test_run_codex_prepends_instructions_and_runs_in_temp_dir():
     result = asyncio.run(run_codex("Écris — ✓"))
     data = echoed(result.text)
-    assert data["prompt"].startswith("# Instructions\nYou are a senior YouTube documentary writer")
+    # The system prompt from the brands file (tests use app/brands.example.json).
+    assert data["prompt"].startswith("# Instructions\nYou are the writer for the example brands.")
     assert data["prompt"].endswith("Écris — ✓")
     assert "codex-run-" in data["cwd"] and not Path(data["cwd"]).exists()  # cleaned up
     assert result.provider == "codex" and result.model == "gpt-5.6-sol"
@@ -127,8 +128,8 @@ def test_codex_missing_binary(monkeypatch):
 # ------------------------------------------------------------ endpoint
 
 def run(**overrides):
-    body = {"brand": "nba_brand_1", "step": "outline", "language": "English",
-            "inputs": {"video_title": "Kobe's 81", "inspirational_script": "Competitor text"}}
+    body = {"brand": "brand_a", "step": "outline", "language": "English",
+            "inputs": {"video_title": "The Long Night", "inspirational_script": "Source text"}}
     body.update(overrides)
     return client.post("/api/scripting/run", json=body)
 
@@ -138,7 +139,7 @@ def test_run_with_codex(config):
     assert r.status_code == 200, r.text
     data = r.json()
     prompt = echoed(data["text"])["prompt"]
-    assert "# Task\nOutline P" in prompt and "Kobe's 81" in prompt
+    assert "# Task\nOutline P" in prompt and "The Long Night" in prompt
     assert data["meta"]["provider"] == "codex" and data["meta"]["model"] == "gpt-5.6-sol"
     assert data["meta"]["cost_usd"] is None and data["usage"]["output_tokens"] == 50
 
