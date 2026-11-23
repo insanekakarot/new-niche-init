@@ -85,7 +85,24 @@ def test_pages_have_a_menu_for_narrow_windows():
 
     from app.main import app
     page = TestClient(app).get("/").text
-    assert 'aria-label="Menu"' in page and "sm:hidden" in page
+    assert 'aria-label="Menu"' in page and "lg:hidden" in page
+
+
+def test_the_bar_links_every_tool_and_admin_once():
+    import re
+
+    from fastapi.testclient import TestClient
+
+    from app.main import app
+    from app.web.catalog import TOOLS
+    page = TestClient(app).get("/translations").text
+    bar = page.split('aria-label="Tools"')[1].split("</nav>")[0]
+    assert re.findall(r'href="(/[a-z]+)"', bar) == [t.path for t in TOOLS]
+    assert bar.count('href="/admin/scripts/dashboard"') == 1
+    assert 'aria-current="page"' in bar.split('href="/translations"')[1].split("</a>")[0]
+    assert "data-dd-toggle" not in bar                        # no Tools dropdown any more
+    header = page.split("<header")[1].split("</header>")[0]
+    assert header.count(">Admin</a>") == 2                     # the bar + the narrow-window menu
 
 
 def test_display_env_fills_in_wslg_when_the_shell_has_none(monkeypatch, tmp_path):

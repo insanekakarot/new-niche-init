@@ -84,33 +84,24 @@
           <span class="hidden whitespace-nowrap font-serif text-[21px] min-[420px]:inline">New Niche</span>
         </a>
       </div>
-      <nav class="hidden items-center gap-3 text-[14px] font-medium sm:flex">
-        <div class="dd relative" data-dd>
-          <button type="button" data-dd-toggle aria-expanded="false" class="flex items-center gap-1.5 rounded px-2.5 py-1.5 transition hover:bg-card">
-            Tools
-            <svg class="dd-chevron h-3.5 w-3.5 text-faint" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.06l3.71-3.83a.75.75 0 111.08 1.04l-4.25 4.39a.75.75 0 01-1.08 0L5.21 8.27a.75.75 0 01.02-1.06z" clip-rule="evenodd"/></svg>
-          </button>
-          <div class="dd-panel absolute left-0 top-full z-40 mt-2 w-72 overflow-hidden rounded-lg border border-line bg-paper p-1 shadow-[0_8px_24px_rgba(30,28,26,.08)]">
-            {% for t in nav_tools %}
-            <a href="{{ t.path }}" class="flex items-center justify-between gap-3 rounded-md px-3 py-2.5 transition hover:bg-card">
-              <span class="text-[14px]">{{ t.short_name }}</span>
-              {% if t.status == 'live' %}
-              <span class="rounded bg-accent-tint px-1.5 py-0.5 text-[11px] font-medium text-accent">Live</span>
-              {% else %}
-              <span class="text-[11px] text-faint">Planned</span>
-              {% endif %}
-            </a>
-            {% endfor %}
-          </div>
-        </div>
-        <a href="/admin/scripts/dashboard" class="rounded px-2.5 py-1.5 transition hover:bg-card">Admin</a>
+      {# Every tool is a link in the bar (planned ones in grey), then Admin. The current page is
+         marked. Narrower windows get the same links in the menu button instead. #}
+      <nav class="hidden items-center gap-1 text-[14px] font-medium lg:flex" aria-label="Tools">
+        {% for t in nav_tools %}
+        {% set on = here == t.path or here.startswith(t.path ~ '/') %}
+        <a href="{{ t.path }}" title="{{ t.name }}{% if t.status != 'live' %} (planned){% endif %}"{% if on %} aria-current="page"{% endif %}
+           class="whitespace-nowrap rounded-md px-2.5 py-1.5 transition hover:bg-card {% if on %}bg-card text-accent{% elif t.status != 'live' %}text-muted hover:text-ink{% endif %}">{{ t.short_name }}</a>
+        {% endfor %}
+        <span class="mx-1.5 h-4 w-px bg-line" aria-hidden="true"></span>
+        {% set on = here.startswith('/admin') %}
+        <a href="/admin/scripts/dashboard"{% if on %} aria-current="page"{% endif %}
+           class="whitespace-nowrap rounded-md px-2.5 py-1.5 transition hover:bg-card{% if on %} bg-card text-accent{% endif %}">Admin</a>
       </nav>
       <div class="ml-auto flex items-center gap-3">
-        <a href="/admin/scripts/dashboard" class="btn btn-secondary hidden sm:inline-flex">Admin</a>
         <a href="/scripting" class="btn btn-primary whitespace-nowrap"><span class="hidden sm:inline">Open </span>Scripting</a>
-        <!-- Narrow windows: the Tools / Admin links above are hidden, so they live in this menu
+        <!-- Narrower windows: the tool / Admin links above are hidden, so they live in this menu
              (last in the bar, so its panel opens inside the window) -->
-        <div class="dd relative sm:hidden" data-dd>
+        <div class="dd relative lg:hidden" data-dd>
           <button type="button" data-dd-toggle aria-expanded="false" aria-label="Menu" class="btn btn-secondary px-3">
             <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M2 4.75A.75.75 0 012.75 4h14.5a.75.75 0 010 1.5H2.75A.75.75 0 012 4.75zm0 5A.75.75 0 012.75 9h14.5a.75.75 0 010 1.5H2.75A.75.75 0 012 9.75zm0 5a.75.75 0 01.75-.75h14.5a.75.75 0 010 1.5H2.75a.75.75 0 01-.75-.75z" clip-rule="evenodd"/></svg>
           </button>
