@@ -92,13 +92,14 @@ class ResearchPage:
         return self.name
 
 
-# New-niche research. How it researches is decided later; for now these are placeholders.
+# New-niche research. Research is live (app/research); Dashboard and Analytics come later.
 RESEARCH: tuple[ResearchPage, ...] = (
     ResearchPage("dashboard", "Dashboard",
                  "Every niche under research at a glance: where each one stands and what's next."),
     ResearchPage("research", "Research",
-                 "Research a new niche: collect what's known about it and decide if it's worth "
-                 "a brand."),
+                 "Explore YouTube from a video: watch it, follow the related videos and collect "
+                 "every one's details. Several links run at once, each in its own browser.",
+                 status="live"),
     ResearchPage("analytics", "Analytics",
                  "Compare researched niches by the numbers to pick the next one."),
 )

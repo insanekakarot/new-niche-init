@@ -57,6 +57,20 @@ Without the file the app runs with no brand profiles and a neutral built-in syst
 `.env`, the brands file, uploaded TSVs, the prompts config and everything in `app/output/` stay
 on your machine. They are in `.gitignore`.
 
+### New-niche research (a real browser)
+
+The Research page (`/research`) opens YouTube links in Chromium through Playwright: it watches
+each video, follows the related videos and collects their details. Install the browser once:
+
+```bash
+pip install -e ".[research]"
+python -m playwright install chromium
+```
+
+Each link runs in its own browser, at the same time as the others; `RESEARCH_MAX_BROWSERS`
+(default 4) caps how many are open at once, and the rest wait their turn. Runs are saved to
+`app/output/_research/` (not in git).
+
 ## Run
 
 ```bash
@@ -127,4 +141,5 @@ ruff check app tests
 | `app/web/` | Scripting page API, projects (CLI sessions), rule jobs, brand catalog |
 | `app/admin/` | Admin panel: TSV upload, dashboard, rules guide |
 | `app/cli/` | Claude and Codex CLI clients and their settings |
+| `app/research/` | New-niche research: YouTube page parser, the Playwright explorer, runs and their API |
 | `app/output/` | Step results and projects (local only, not in git) |

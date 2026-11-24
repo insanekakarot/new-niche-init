@@ -1,0 +1,62 @@
+{# The Research page's tool: start links -> runs (one browser each, all at once) -> results.
+   Talks to /api/research (app/research/api.py). #}
+{% from "_tool_icons.html" import tool_icon %}
+
+<section class="border-b border-line px-6 py-10 sm:px-10">
+  <form id="rs-form" class="grid gap-8 lg:grid-cols-12" autocomplete="off">
+    <div class="lg:col-span-8">
+      <div class="flex items-baseline justify-between gap-3">
+        <label class="label text-faint" for="rs-link-0">Start videos</label>
+        <span class="text-[12px] text-faint">One link per box · each runs in its own browser</span>
+      </div>
+      <ol id="rs-links" class="mt-3 space-y-2"></ol>
+      <button type="button" id="rs-add" class="btn btn-secondary mt-3">
+        <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M10.75 4.75a.75.75 0 00-1.5 0v4.5h-4.5a.75.75 0 000 1.5h4.5v4.5a.75.75 0 001.5 0v-4.5h4.5a.75.75 0 000-1.5h-4.5v-4.5z"/></svg>
+        Add link
+      </button>
+      <p class="mt-2 text-[12px] text-faint">Pasting several links into one box splits them into boxes.</p>
+    </div>
+    <div class="lg:col-span-4">
+      <span class="label text-faint">For each link</span>
+      <div class="mt-3 grid grid-cols-2 gap-3">
+        <label class="block rounded-lg border border-line p-3">
+          <span class="block text-[12px] text-muted">Videos to open</span>
+          <input id="rs-videos" type="number" min="1" max="50" value="5" class="mt-1 w-full bg-transparent text-[20px] font-medium outline-none">
+        </label>
+        <label class="block rounded-lg border border-line p-3">
+          <span class="block text-[12px] text-muted">Watch each (s)</span>
+          <input id="rs-watch" type="number" min="1" max="600" value="30" class="mt-1 w-full bg-transparent text-[20px] font-medium outline-none">
+        </label>
+      </div>
+      <p class="mt-3 text-[13px] leading-relaxed text-muted">
+        Opens the link, watches it, then keeps opening the first related video it hasn't seen,
+        reading each one's details. <span id="rs-estimate" class="text-ink"></span>
+      </p>
+      <button type="submit" id="rs-run" class="btn btn-primary btn-lg mt-5 w-full justify-center">
+        {{ tool_icon('research', "h-5 w-5") }}<span id="rs-run-label">Run research</span>
+      </button>
+      <p id="rs-error" class="mt-3 hidden rounded-md bg-amber-50 px-3 py-2 text-[13px] text-amber-800"></p>
+    </div>
+  </form>
+</section>
+
+<section>
+  <div class="flex items-center justify-between gap-4 border-b border-line px-6 py-3.5 sm:px-10">
+    <span class="label text-faint">Runs</span>
+    <span id="rs-count" class="label text-faint"></span>
+  </div>
+  <div id="rs-runs" class="divide-y divide-line"></div>
+  <p id="rs-empty" class="px-6 py-12 text-center text-[14px] text-faint sm:px-10">No runs yet. Add a YouTube link above and run it.</p>
+</section>
+
+<template id="rs-link-row">
+  <li class="flex items-center gap-2">
+    <span class="w-6 flex-shrink-0 text-right font-mono text-[12px] text-faint" data-num></span>
+    <input type="text" inputmode="url" placeholder="https://www.youtube.com/watch?v=…"
+           class="h-11 min-w-0 flex-1 rounded-lg border border-line bg-paper px-3 text-[14px] outline-none transition focus:border-accent">
+    <button type="button" data-remove aria-label="Remove this link" title="Remove"
+            class="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-md text-faint transition hover:bg-card hover:text-accent">
+      <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z"/></svg>
+    </button>
+  </li>
+</template>

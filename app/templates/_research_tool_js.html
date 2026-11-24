@@ -1,0 +1,302 @@
+{# The Research page's script (see _research_tool.html). #}
+{% from "_tool_icons.html" import tool_icon %}
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const compact = new Intl.NumberFormat('en', { notation: 'compact', maximumSignificantDigits: 3 });
+  const full = new Intl.NumberFormat('en');
+  const num = (n) => (n === null || n === undefined ? '—' : compact.format(n));
+  const numTitle = (n) => (n === null || n === undefined ? '' : full.format(n));
+  const date = (iso) => { if (!iso) return '—'; const d = new Date(iso); return isNaN(d) ? iso : d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }); };
+  const when = (ts) => ts ? new Date(ts * 1000).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
+  const isYouTube = (s) => /(youtube\.com\/(watch\?.*v=|shorts\/|live\/|embed\/)|youtu\.be\/)[\w-]{11}/.test(s);
+  const ICON = `{{ tool_icon('research', 'h-5 w-5') | replace('\n', ' ') }}`;
+
+  // ------------------------------------------------------------ the link boxes
+  const list = $('rs-links'), rowTpl = $('rs-link-row');
+  const links = () => [...list.querySelectorAll('input')].map((i) => i.value.trim()).filter(Boolean);
+  function renumber() {
+    const rows = [...list.children];
+    rows.forEach((li, i) => {
+      li.querySelector('[data-num]').textContent = i + 1;
+      li.querySelector('input').id = 'rs-link-' + i;
+      li.querySelector('[data-remove]').classList.toggle('invisible', rows.length === 1);
+    });
+    estimate();
+  }
+  function makeRow(value = '') {
+    const li = rowTpl.content.firstElementChild.cloneNode(true);
+    const input = li.querySelector('input');
+    input.value = value;
+    input.addEventListener('paste', (e) => {
+      const found = (e.clipboardData.getData('text') || '').split(/[\s,]+/).filter(isYouTube);
+      if (found.length < 2) return;
+      e.preventDefault();
+      input.value = found[0];
+      let after = li;
+      found.slice(1).forEach((l) => { const r = makeRow(l); list.insertBefore(r, after.nextSibling); after = r; });
+      renumber();
+    });
+    input.addEventListener('input', estimate);
+    li.querySelector('[data-remove]').addEventListener('click', () => { li.remove(); renumber(); });
+    return li;
+  }
+  function addRow(value = '', focus = false) {
+    const li = makeRow(value);
+    list.appendChild(li);
+    renumber();
+    if (focus) li.querySelector('input').focus();
+  }
+  function estimate() {
+    const n = Math.max(1, links().length), v = +$('rs-videos').value || 1, w = +$('rs-watch').value || 1;
+    const mins = Math.ceil((v * (w + 8)) / 60);  // ~8 s to open and read each video
+    $('rs-estimate').textContent = `${n} link${n > 1 ? 's' : ''} at the same time · about ${mins} min each.`;
+    $('rs-run-label').textContent = n > 1 ? `Run research on ${n} links` : 'Run research';
+  }
+  $('rs-add').addEventListener('click', () => addRow('', true));
+  $('rs-videos').addEventListener('input', estimate);
+  $('rs-watch').addEventListener('input', estimate);
+  addRow();
+
+  // ------------------------------------------------------------ starting runs
+  const showError = (msg) => { $('rs-error').textContent = msg || ''; $('rs-error').classList.toggle('hidden', !msg); };
+  $('rs-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const urls = links();
+    if (!urls.length) return showError('Add at least one YouTube link.');
+    const bad = urls.filter((u) => !isYouTube(u));
+    if (bad.length) return showError('Not a YouTube video link: ' + bad.join(', '));
+    showError('');
+    $('rs-run').disabled = true;
+    try {
+      const r = await fetch('/api/research/runs', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ urls, videos: +$('rs-videos').value || 5, watch_s: +$('rs-watch').value || 30 }),
+      });
+      const data = await r.json();
+      if (!r.ok) throw new Error(typeof data.detail === 'string' ? data.detail : 'Check the links and the numbers.');
+      data.runs.forEach((run) => { runs.set(run.id, run); opened.add(run.id); });
+      list.replaceChildren(); addRow();
+      render(); poll();
+    } catch (err) { showError(err.message); }
+    finally { $('rs-run').disabled = false; }
+  });
+
+  // ------------------------------------------------------------ runs
+  const runs = new Map();      // id -> summary, or the full run once fetched
+  const opened = new Set();    // runs showing their results
+  const live = (r) => r.status === 'queued' || r.status === 'running';
+  const STATUS = {
+    queued: ['Queued', 'bg-card text-muted ring-1 ring-line'], running: ['Running', 'bg-accent-tint text-accent'],
+    done: ['Done', 'bg-[#e8f5ec] text-[#1f7a3d]'], stopped: ['Stopped', 'bg-card text-muted ring-1 ring-line'],
+    failed: ['Failed', 'bg-amber-50 text-amber-800'],
+  };
+
+  async function load() {
+    try {
+      const data = await (await fetch('/api/research/runs')).json();
+      data.runs.forEach((run) => { if (!runs.get(run.id)?.videos) runs.set(run.id, run); });
+      render(); poll();
+    } catch { /* the list stays as it is */ }
+  }
+  async function fetchRun(id) {
+    const r = await fetch('/api/research/runs/' + encodeURIComponent(id));
+    if (r.ok) runs.set(id, await r.json());
+  }
+  let timer = null;
+  async function poll() {
+    clearTimeout(timer);
+    const ids = [...runs.values()].filter((r) => live(r) || (opened.has(r.id) && !r.videos)).map((r) => r.id);
+    if (!ids.length) return;
+    await Promise.all(ids.map(fetchRun));
+    render();
+    if ([...runs.values()].some(live)) timer = setTimeout(poll, 1500);
+  }
+
+  function render() {
+    const all = [...runs.values()].sort((a, b) => b.created_at - a.created_at);
+    $('rs-empty').classList.toggle('hidden', all.length > 0);
+    const going = all.filter(live).length;
+    $('rs-count').textContent = all.length ? `${all.length} run${all.length > 1 ? 's' : ''}${going ? ` · ${going} going` : ''}` : '';
+    const box = $('rs-runs');
+    const keep = new Set(all.map((r) => r.id));
+    [...box.children].forEach((el) => { if (!keep.has(el.dataset.id)) el.remove(); });
+    all.forEach((run, i) => {
+      let el = [...box.children].find((c) => c.dataset.id === run.id);
+      if (!el) { el = document.createElement('article'); el.dataset.id = run.id; }
+      const html = runHtml(run);
+      if (el._html !== html) {
+        const openSections = [...el.querySelectorAll('.acc.open')].map((a) => a.dataset.key);
+        el.innerHTML = html; el._html = html;
+        el.querySelectorAll('.acc').forEach((a) => { if (openSections.includes(a.dataset.key)) a.classList.add('open'); });
+      }
+      if (box.children[i] !== el) box.insertBefore(el, box.children[i] || null);
+    });
+  }
+
+  function runHtml(run) {
+    const [label, cls] = STATUS[run.status] || STATUS.queued;
+    const videos = run.videos || null;
+    const done = videos ? videos.length : run.videos_done || 0;
+    const first = videos && videos[0];
+    const title = first ? first.title : run.start_title || 'Waiting for the first video…';
+    const thumb = first ? first.thumbnail : run.start_thumbnail;
+    const p = run.progress || {};
+    const isOpen = opened.has(run.id);
+    let progress = '';
+    if (live(run)) {
+      const total = run.videos_wanted * run.watch_s;
+      const doneS = Math.max(0, (p.n || 1) - 1) * run.watch_s + (p.second || 0);
+      const pct = run.status === 'queued' ? 0 : Math.min(100, Math.round((doneS / total) * 100));
+      const watching = p.note === 'Watching' || p.note === 'Ad playing';
+      progress = `
+        <div class="mt-4">
+          <div class="flex items-center justify-between gap-3 text-[13px]">
+            <span class="text-ink">${run.status === 'queued' ? esc(p.note) : `Video ${p.n || 1} of ${run.videos_wanted} · ${esc(p.note)}${watching ? ` ${p.second}/${p.of} s` : ''}`}</span>
+            <span class="font-mono text-[12px] text-faint">${pct}%</span>
+          </div>
+          <div class="mt-2 h-1.5 overflow-hidden rounded-full bg-card ring-1 ring-line"><div class="h-full rounded-full bg-accent transition-all duration-700" style="width:${pct}%"></div></div>
+        </div>`;
+    }
+    const error = run.error ? `<p class="mt-3 rounded-md bg-amber-50 px-3 py-2 text-[13px] text-amber-800">${esc(run.error)}</p>` : '';
+    const body = isOpen && done ? (videos ? resultsHtml(run) : '<p class="px-6 pb-8 text-[13px] text-faint sm:px-10">Loading…</p>') : '';
+    return `
+      <div class="px-6 py-6 sm:px-10">
+        <div class="flex flex-wrap items-start gap-4">
+          ${thumb ? `<img src="${esc(thumb)}" alt="" class="hidden h-14 w-24 flex-shrink-0 rounded-md object-cover ring-1 ring-line sm:block" loading="lazy">`
+                  : `<div class="hidden h-14 w-24 flex-shrink-0 items-center justify-center rounded-md bg-card text-faint ring-1 ring-line sm:flex">${ICON}</div>`}
+          <div class="min-w-0 flex-1">
+            <div class="flex flex-wrap items-center gap-2">
+              <span class="rounded px-1.5 py-0.5 text-[11px] font-medium ${cls}">${label}</span>
+              <span class="text-[12px] text-faint">${when(run.created_at)} · ${done}/${run.videos_wanted} videos · ${run.watch_s} s each</span>
+            </div>
+            <h3 class="mt-1.5 truncate font-serif text-[20px] font-medium" title="${esc(title)}">${esc(title)}</h3>
+            <a href="${esc(run.url)}" target="_blank" rel="noopener" class="block truncate font-mono text-[12px] text-faint hover:text-accent">${esc(run.url)}</a>
+          </div>
+          <div class="flex flex-shrink-0 items-center gap-2">
+            ${live(run) ? `<button type="button" class="btn btn-secondary" data-stop="${esc(run.id)}">Stop</button>` : ''}
+            ${done ? `<a class="btn btn-secondary" href="/api/research/runs/${encodeURIComponent(run.id)}/download" title="Download every detail as JSON">JSON</a>` : ''}
+            ${done ? `<button type="button" class="btn ${isOpen ? 'btn-secondary' : 'btn-primary'}" data-toggle="${esc(run.id)}">${isOpen ? 'Hide results' : 'Show results'}</button>` : ''}
+          </div>
+        </div>
+        ${progress}${error}
+      </div>
+      ${body}`;
+  }
+
+  // ------------------------------------------------------------ results
+  function resultsHtml(run) {
+    const vids = run.videos || [];
+    const td = 'py-2.5 pr-3 text-right tabular-nums';
+    const rows = vids.map((v, i) => `
+      <tr class="border-t border-line">
+        <td class="py-2.5 pl-3 pr-3 font-mono text-[12px] text-faint">${i + 1}</td>
+        <td class="max-w-[22rem] py-2.5 pr-3"><a href="#rs-v-${esc(run.id)}-${i}" class="block truncate font-medium hover:text-accent" title="${esc(v.title)}">${esc(v.title)}</a><span class="block truncate text-[12px] text-faint">${esc(v.channel?.name)}</span></td>
+        <td class="${td}" title="${numTitle(v.views)}">${num(v.views)}</td>
+        <td class="${td}" title="${numTitle(v.likes)}">${num(v.likes)}</td>
+        <td class="${td}" title="${numTitle(v.comments)}">${num(v.comments)}</td>
+        <td class="${td}">${v.like_rate != null ? v.like_rate + '%' : '—'}</td>
+        <td class="${td}" title="${numTitle(v.channel?.subscribers)}">${num(v.channel?.subscribers)}</td>
+        <td class="${td}">${esc(v.length || '—')}</td>
+        <td class="whitespace-nowrap py-2.5 pr-3 text-right">${date(v.published)}</td>
+      </tr>`).join('');
+    const th = 'py-2 pr-3 text-right font-medium';
+    const skipped = (run.skipped || []).length ? `<p class="mt-3 text-[12px] text-faint">Skipped ${run.skipped.length} video(s) that couldn't be opened.</p>` : '';
+    return `
+      <div class="px-6 pb-8 sm:px-10">
+        <div class="overflow-x-auto rounded-lg border border-line">
+          <table class="w-full min-w-[46rem] text-left text-[13px]">
+            <thead class="bg-card text-[11px] uppercase tracking-wider text-faint">
+              <tr><th class="py-2 pl-3 pr-3 font-medium">#</th><th class="py-2 pr-3 font-medium">Video</th><th class="${th}">Views</th><th class="${th}">Likes</th><th class="${th}">Comments</th><th class="${th}">Like rate</th><th class="${th}">Subscribers</th><th class="${th}">Length</th><th class="${th}">Published</th></tr>
+            </thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>
+        ${skipped}
+        <div class="mt-6 space-y-4">${vids.map((v, i) => videoHtml(run, v, i)).join('')}</div>
+      </div>`;
+  }
+
+  const chip = (t) => `<span class="rounded bg-card px-2 py-0.5 text-[12px] text-muted ring-1 ring-line">${esc(t)}</span>`;
+  const stat = (label, value, title = '') => `
+    <div class="rounded-lg bg-card px-3 py-2.5 ring-1 ring-line"${title ? ` title="${esc(title)}"` : ''}>
+      <div class="label text-faint">${label}</div><div class="mt-1 truncate text-[15px] font-semibold tabular-nums text-ink">${value}</div>
+    </div>`;
+  const section = (key, title, count, inner) => `
+    <div class="acc border-t border-line" data-key="${key}">
+      <button type="button" data-acc-toggle class="flex w-full items-center justify-between gap-3 px-4 py-3 text-left text-[14px] font-medium transition hover:bg-card">
+        <span>${title}${count !== null ? ` <span class="font-normal text-faint">${count}</span>` : ''}</span>
+        <svg class="dd-chevron h-4 w-4 text-faint" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.06l3.71-3.83a.75.75 0 111.08 1.04l-4.25 4.39a.75.75 0 01-1.08 0L5.21 8.27a.75.75 0 01.02-1.06z" clip-rule="evenodd"/></svg>
+      </button>
+      <div class="acc-body"><div><div class="px-4 pb-4">${inner}</div></div></div>
+    </div>`;
+
+  function videoHtml(run, v, i) {
+    const ch = v.channel || {}, visit = v.visit || {};
+    const from = visit.from ? (run.videos.find((x) => x.id === visit.from)?.title || visit.from) : 'the start link';
+    const keywords = v.keywords || [];
+    const comments = (v.top_comments || []).map((c) => `
+      <li class="py-2.5"><div class="flex items-baseline justify-between gap-3 text-[12px]"><span class="font-medium text-ink">${esc(c.author)}</span><span class="flex-shrink-0 text-faint">${esc(c.age)}${c.likes ? ` · ${esc(c.likes)} likes` : ''}</span></div>
+      <p class="mt-1 whitespace-pre-line text-[13px] leading-relaxed text-muted">${esc(c.text)}</p></li>`).join('');
+    const related = (v.related || []).slice(0, 12).map((r) => `
+      <li class="flex items-baseline justify-between gap-3 py-2"><a href="${esc(r.url)}" target="_blank" rel="noopener" class="min-w-0 truncate text-[13px] hover:text-accent" title="${esc(r.title)}">${esc(r.title)}</a>
+      <span class="flex-shrink-0 text-[12px] text-faint">${esc(r.channel)}${r.views_text ? ` · ${esc(r.views_text)}` : ''}${r.length ? ` · ${esc(r.length)}` : ''}</span></li>`).join('');
+    const chapters = (v.chapters || []).map((c) => `<li class="flex gap-3 py-1.5 text-[13px]"><span class="w-14 flex-shrink-0 font-mono text-[12px] text-accent">${esc(c.start)}</span><span>${esc(c.title)}</span></li>`).join('');
+    const facts = [
+      ['Video id', v.id], ['Channel id', ch.id || '—'], ['Uploaded', date(v.uploaded)], ['Age on the page', v.age || '—'],
+      ['Comment rate', v.comment_rate != null ? v.comment_rate + '%' : '—'], ['Available in', v.countries ? v.countries + ' countries' : '—'],
+      ['Family safe', v.family_safe == null ? '—' : v.family_safe ? 'Yes' : 'No'], ['Live video', v.live ? 'Yes' : 'No'],
+      ['Unlisted', v.unlisted ? 'Yes' : 'No'], ['Opened', when(visit.opened_at)],
+    ].map(([k, val]) => `<div class="flex justify-between gap-3 border-b border-line py-1.5 text-[13px]"><span class="text-faint">${k}</span><span class="truncate text-right text-ink">${esc(val)}</span></div>`).join('');
+    return `
+      <article id="rs-v-${esc(run.id)}-${i}" class="scroll-mt-20 overflow-hidden rounded-lg border border-line">
+        <div class="flex flex-col gap-4 p-4 sm:flex-row">
+          <a href="${esc(v.url)}" target="_blank" rel="noopener" class="relative block flex-shrink-0 self-start sm:w-56">
+            <img src="${esc(v.thumbnail)}" alt="" class="aspect-video w-full rounded-md object-cover ring-1 ring-line" loading="lazy">
+            ${v.length ? `<span class="absolute bottom-1.5 right-1.5 rounded bg-ink/80 px-1.5 py-0.5 font-mono text-[11px] text-white">${esc(v.length)}</span>` : ''}
+          </a>
+          <div class="min-w-0 flex-1">
+            <div class="text-[12px] text-faint"><span class="font-mono text-accent">${String(i + 1).padStart(2, '0')}</span> · opened from ${esc(from)}</div>
+            <a href="${esc(v.url)}" target="_blank" rel="noopener" class="mt-1 block font-serif text-[20px] font-medium leading-snug hover:text-accent">${esc(v.title)}</a>
+            <div class="mt-1 text-[13px] text-muted">
+              <a href="${esc(ch.url)}" target="_blank" rel="noopener" class="font-medium text-ink hover:text-accent">${esc(ch.name)}</a>${ch.verified ? ' <span class="text-faint" title="Verified">✓</span>' : ''}${ch.handle ? ` · ${esc(ch.handle)}` : ''}${ch.subscribers_text ? ` · ${esc(ch.subscribers_text)}` : ''}
+            </div>
+            <div class="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-6">
+              ${stat('Views', num(v.views), numTitle(v.views))}
+              ${stat('Likes', num(v.likes) + (v.like_rate != null ? ` <span class="text-[12px] font-normal text-faint">${v.like_rate}%</span>` : ''), numTitle(v.likes))}
+              ${stat('Comments', num(v.comments), numTitle(v.comments))}
+              ${stat('Published', date(v.published))}
+              ${stat('Category', esc(v.category || '—'), v.category)}
+              ${stat('Watched', `${visit.watched_s ?? 0} s${visit.ad ? ' <span class="text-[12px] font-normal text-faint">+ ad</span>' : ''}`)}
+            </div>
+            ${v.hashtags?.length ? `<div class="mt-3 flex flex-wrap gap-x-2 gap-y-1">${v.hashtags.map((h) => `<span class="text-[12px] font-medium text-accent">${esc(h)}</span>`).join('')}</div>` : ''}
+          </div>
+        </div>
+        ${section('desc', 'Description', null, `<p class="max-h-80 overflow-y-auto whitespace-pre-line text-[13px] leading-relaxed text-muted">${esc(v.description) || '—'}</p>`)}
+        ${keywords.length ? section('tags', 'Keywords', keywords.length, `<div class="flex flex-wrap gap-1.5">${keywords.map(chip).join('')}</div>`) : ''}
+        ${chapters ? section('chapters', 'Chapters', v.chapters.length, `<ol class="divide-y divide-line">${chapters}</ol>`) : ''}
+        ${comments ? section('comments', 'Top comments', v.top_comments.length, `<ol class="divide-y divide-line">${comments}</ol>`) : ''}
+        ${related ? section('related', 'Related videos', v.related.length, `<ol class="divide-y divide-line">${related}</ol>`) : ''}
+        ${section('facts', 'More details', null, `<div class="grid gap-x-8 sm:grid-cols-2">${facts}</div>`)}
+      </article>`;
+  }
+
+  // ------------------------------------------------------------ buttons in the runs
+  $('rs-runs').addEventListener('click', async (e) => {
+    const toggle = e.target.closest('[data-toggle]');
+    const stop = e.target.closest('[data-stop]');
+    if (toggle) {
+      const id = toggle.dataset.toggle;
+      if (opened.has(id)) opened.delete(id); else opened.add(id);
+      render();
+      if (opened.has(id) && !runs.get(id).videos) { await fetchRun(id); render(); }
+    } else if (stop) {
+      stop.disabled = true;
+      await fetch(`/api/research/runs/${encodeURIComponent(stop.dataset.stop)}/stop`, { method: 'POST' });
+      poll();
+    }
+  });
+  load();
+})();
+</script>
