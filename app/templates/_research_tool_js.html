@@ -153,7 +153,7 @@
       const total = run.videos_wanted * run.watch_s;
       const doneS = Math.max(0, (p.n || 1) - 1) * run.watch_s + (p.second || 0);
       const pct = run.status === 'queued' ? 0 : Math.min(100, Math.round((doneS / total) * 100));
-      const watching = p.note === 'Watching' || p.note === 'Ad playing';
+      const watching = p.note === 'Watching' || p.note === 'Ad playing';  // "Checking the niche" shows as is
       progress = `
         <div class="mt-4">
           <div class="flex items-center justify-between gap-3 text-[13px]">
@@ -164,7 +164,11 @@
         </div>`;
     }
     const error = (run.error ? `<p class="mt-3 rounded-md bg-amber-50 px-3 py-2 text-[13px] text-amber-800">${esc(run.error)}</p>` : '')
-      + (run.ended && !live(run) ? `<p class="mt-3 text-[13px] text-muted">Ended early: ${esc(run.ended)}.</p>` : '');
+      + (run.ended && !live(run) ? (run.warning
+        ? `<p class="mt-3 flex gap-2 rounded-md bg-amber-50 px-3 py-2 text-[13px] text-amber-800 ring-1 ring-amber-200"><span aria-hidden="true">⚠</span><span><b class="font-semibold">Ended early.</b> ${esc(run.ended)}.</span></p>`
+        : `<p class="mt-3 text-[13px] text-muted">Ended early: ${esc(run.ended)}.</p>`) : '');
+    const nicheLine = run.niche ? `<div class="mt-2 flex flex-wrap items-center gap-2 text-[12px]"><span class="rounded bg-accent-tint px-1.5 py-0.5 font-medium text-accent" title="${esc(run.niche.description || '')}">Niche: ${esc(run.niche.label || run.niche.keywords?.slice(0, 4).join(', ') || '—')}</span>${run.niche.topic ? `<span class="text-muted">Start topic: ${esc(run.niche.topic)}</span>` : ''}${run.matching?.text ? `<span class="text-faint">${esc(run.matching.text)}</span>` : ''}${(run.off_niche || []).length ? `<span class="text-faint">· ${run.off_niche.length} skipped as another niche</span>` : ''}</div>`
+      : (run.matching?.text && run.matching.matching !== 'off' ? `<div class="mt-2 text-[12px] text-faint">Same niche: ${esc(run.matching.text)}</div>` : '');
     const body = isOpen && done ? (videos ? resultsHtml(run) : '<p class="px-6 pb-8 text-[13px] text-faint sm:px-10">Loading…</p>') : '';
     return `
       <div class="px-6 py-6 sm:px-10">
@@ -178,6 +182,7 @@
             </div>
             <h3 class="mt-1.5 truncate font-serif text-[20px] font-medium" title="${esc(title)}">${esc(title)}</h3>
             <a href="${esc(run.url)}" target="_blank" rel="noopener" class="block truncate font-mono text-[12px] text-faint hover:text-accent">${esc(run.url)}</a>
+            ${nicheLine}
           </div>
           <div class="flex flex-shrink-0 items-center gap-2">
             ${live(run) ? `<button type="button" class="btn btn-secondary" data-stop="${esc(run.id)}">Stop</button>` : ''}
@@ -197,7 +202,7 @@
     const rows = vids.map((v, i) => `
       <tr class="border-t border-line">
         <td class="py-2.5 pl-3 pr-3 font-mono text-[12px] text-faint">${i + 1}</td>
-        <td class="max-w-[22rem] py-2.5 pr-3"><a href="#rs-v-${esc(run.id)}-${i}" class="block truncate font-medium hover:text-accent" title="${esc(v.title)}">${esc(v.title)}</a><span class="block truncate text-[12px] text-faint">${esc(v.channel?.name)}</span></td>
+        <td class="max-w-[22rem] py-2.5 pr-3"><a href="#rs-v-${esc(run.id)}-${i}" class="block truncate font-medium hover:text-accent" title="${esc(v.title)}">${esc(v.title)}</a><span class="block truncate text-[12px] text-faint">${esc(v.channel?.name)}${v.niche?.label ? ` · ${nicheMark(v.niche)} ${esc(v.niche.label)}` : (v.niche ? ` · ${nicheMark(v.niche)}` : '')}</span></td>
         <td class="${td}" title="${numTitle(v.views)}">${num(v.views)}</td>
         <td class="${td}" title="${numTitle(v.likes)}">${num(v.likes)}</td>
         <td class="${td}" title="${numTitle(v.comments)}">${num(v.comments)}</td>
@@ -233,6 +238,7 @@
           </table>
         </div>
         ${skipped}
+        ${offNiche(run)}
         <div class="mt-6 space-y-4">${vids.map((v, i) => videoHtml(run, v, i)).join('')}</div>
       </div>`;
   }
@@ -240,6 +246,18 @@
   const ratio = (r) => (r == null ? '—' : (r >= 10 ? Math.round(r) : r >= 1 ? r.toFixed(1) : r.toFixed(2)) + '×');
   const ago = (n) => { const d = Math.round(n); return (d === 0 ? 'today' : d < 14 ? `${d} d ago` : d < 60 ? `${Math.round(d / 7)} wk ago` : d < 730 ? `${Math.round(d / 30)} mo ago` : `${Math.round(d / 365)} yr ago`); };
   const outOfRange = (run, v) => !!run.max_age_days && v.days_old != null && v.days_old > run.max_age_days;
+  const nicheMark = (n) => (n.match === true ? '<span class="text-[#1f7a3d]" title="In the niche">✓</span>' : n.match === false ? '<span class="text-amber-700" title="Another niche">✗</span>' : '<span title="Not checked">·</span>');
+  function offNiche(run) {
+    const items = run.off_niche || [];
+    if (!items.length) return '';
+    const rows = items.map((r) => `
+      <li class="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 py-2">
+        <a href="${esc(r.url)}" target="_blank" rel="noopener" class="min-w-0 flex-1 truncate text-[13px] hover:text-accent" title="${esc(r.title)}">${esc(r.title || r.id)}</a>
+        <span class="flex-shrink-0 text-[12px] text-faint">${esc(r.channel)}${r.age ? ` · ${esc(r.age)}` : ''}</span>
+        <span class="w-full text-[12px] text-amber-800">${esc(r.why)}<span class="text-faint"> · ${esc(r.via)}</span></span>
+      </li>`).join('');
+    return `<div class="mt-4 overflow-hidden rounded-lg border border-line">${section('off', 'Skipped as another niche (not opened)', items.length, `<ol class="divide-y divide-line">${rows}</ol>`)}</div>`;
+  }
   const chip = (t) => `<span class="rounded bg-card px-2 py-0.5 text-[12px] text-muted ring-1 ring-line">${esc(t)}</span>`;
   const stat = (label, value, title = '') => `
     <div class="rounded-lg bg-card px-3 py-2.5 ring-1 ring-line"${title ? ` title="${esc(title)}"` : ''}>
@@ -281,6 +299,12 @@
           <div class="min-w-0 flex-1">
             <div class="text-[12px] text-faint"><span class="font-mono text-accent">${String(i + 1).padStart(2, '0')}</span> · opened from ${esc(from)}${v.category ? ` · ${esc(v.category)}` : ''}${outOfRange(run, v) ? ` · <span class="text-amber-700">older than ${run.max_age_days} days</span>` : ''}</div>
             <a href="${esc(v.url)}" target="_blank" rel="noopener" class="mt-1 block font-serif text-[20px] font-medium leading-snug hover:text-accent">${esc(v.title)}</a>
+            ${v.niche ? `<div class="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px]">
+              <span class="rounded px-1.5 py-0.5 font-medium ${v.niche.match === false ? 'bg-amber-50 text-amber-800' : 'bg-accent-tint text-accent'}">${nicheMark(v.niche)} ${esc(v.niche.label || (v.niche.match === false ? 'Another niche' : v.niche.match ? 'In the niche' : 'Niche not checked'))}</span>
+              ${v.niche.topic ? `<span class="text-ink">${esc(v.niche.topic)}</span>` : ''}
+              ${v.niche.reason ? `<span class="text-muted">${esc(v.niche.reason)}</span>` : ''}
+              ${v.niche.via ? `<span class="text-faint">· ${esc(v.niche.via)}</span>` : ''}
+            </div>` : ''}
             <div class="mt-1 text-[13px] text-muted">
               <a href="${esc(ch.url)}" target="_blank" rel="noopener" class="font-medium text-ink hover:text-accent">${esc(ch.name)}</a>${ch.verified ? ' <span class="text-faint" title="Verified">✓</span>' : ''}${ch.handle ? ` · ${esc(ch.handle)}` : ''}${ch.subscribers_text ? ` · ${esc(ch.subscribers_text)}` : ''}
             </div>

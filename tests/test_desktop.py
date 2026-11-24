@@ -101,7 +101,7 @@ def test_the_bar_has_research_then_tools_menus_and_admin_beside_scripting():
     assert bar.index('data-menu="research"') < bar.index('data-menu="tools"')   # Research first
     assert re.findall(r'href="(/[a-z/]+)"', research) == [p.path for p in RESEARCH]
     assert re.findall(r'href="(/[a-z/]+)"', tools) == [t.path for t in TOOLS]
-    assert ["Dashboard", "Research", "Analytics"] == [p.name for p in RESEARCH]
+    assert ["Dashboard", "Research", "Analytics", "Settings"] == [p.name for p in RESEARCH]
     assert bar.count("<svg") >= 2 + len(RESEARCH) + len(TOOLS)   # icons beside the words
     assert 'aria-current="page"' in tools.split('href="/translations"')[1].split("</a>")[0]
     header = page.split("<header")[1].split("</header>")[0]
@@ -116,7 +116,8 @@ def test_research_pages():
     from app.main import app
     from app.web.catalog import RESEARCH
     client = TestClient(app)
-    assert [p.path for p in RESEARCH] == ["/research/dashboard", "/research", "/research/analytics"]
+    assert [p.path for p in RESEARCH] == ["/research/dashboard", "/research", "/research/analytics",
+                                          "/research/settings"]
     for p in RESEARCH:
         r = client.get(p.path)
         assert r.status_code == 200 and f"Research / {p.name}" in r.text

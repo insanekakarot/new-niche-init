@@ -19,6 +19,8 @@ htmlcov/
 # Private brand data: the brands file (start from app/brands.example.json), wherever it is,
 # and the old Drive links file it replaced
 ___brands.json
+# Research settings (Research › Settings), beside the brands file
+___research.json
 app/brand_links.json
 *.local.json
 

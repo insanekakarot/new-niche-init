@@ -1,0 +1,180 @@
+{# Research › Settings: the private ___research.json (app/research/options.py). #}
+{% set field = "mt-1 w-full bg-transparent text-[20px] font-medium outline-none placeholder:text-faint" %}
+{% set box = "block rounded-lg border border-line p-3 transition focus-within:border-accent" %}
+{% set hint = "block text-[12px] text-muted" %}
+{% macro number(id, label, value, min, max, note="", placeholder="") -%}
+<label class="{{ box }}">
+  <span class="flex items-baseline justify-between gap-3 {{ hint }}"><span>{{ label }}</span>{% if note %}<span class="text-faint">{{ note }}</span>{% endif %}</span>
+  <input id="{{ id }}" name="{{ id }}" type="number" min="{{ min }}" max="{{ max }}" value="{{ value }}"{% if placeholder %} placeholder="{{ placeholder }}"{% endif %} class="{{ field }}">
+</label>
+{%- endmacro %}
+
+<form id="st-form" class="divide-y divide-line" autocomplete="off">
+  <section class="grid gap-8 px-6 py-10 sm:px-10 lg:grid-cols-12">
+    <div class="lg:col-span-4">
+      <h2 class="font-serif text-[24px] font-medium">Runs</h2>
+      <p class="mt-2 text-[14px] leading-relaxed text-muted">What the Research page starts with. Each run can still change its videos, watch time, days and browser there.</p>
+    </div>
+    <div class="grid gap-3 sm:grid-cols-2 lg:col-span-8">
+      {{ number("videos", "Videos to open per link", opts.videos, 1, 50) }}
+      {{ number("watch_s", "Watch each (seconds)", opts.watch_s, 1, 600) }}
+      {{ number("max_age_days", "Published within (days)", opts.max_age_days or "", 1, 3650, "empty = any age", "Any age") }}
+      {{ number("max_browsers", "Browsers at once", opts.max_browsers, 1, 12, "more links wait their turn") }}
+      <label class="{{ box }} flex cursor-pointer items-center justify-between gap-3 sm:col-span-2">
+        <span>
+          <span class="block text-[14px] font-medium text-ink">Show the browsers</span>
+          <span class="{{ hint }}">A window per link, so you can watch it work</span>
+        </span>
+        <input id="show_browser" type="checkbox" class="peer sr-only"{% if opts.show_browser %} checked{% endif %}>
+        <span class="relative h-6 w-11 flex-shrink-0 rounded-full bg-line transition peer-checked:bg-accent peer-focus-visible:ring-2 peer-focus-visible:ring-accent/40 after:absolute after:left-0.5 after:top-0.5 after:h-5 after:w-5 after:rounded-full after:bg-white after:shadow after:transition peer-checked:after:translate-x-5" aria-hidden="true"></span>
+      </label>
+    </div>
+  </section>
+
+  <section class="grid gap-8 px-6 py-10 sm:px-10 lg:grid-cols-12">
+    <div class="lg:col-span-4">
+      <h2 class="font-serif text-[24px] font-medium">Same niche</h2>
+      <p class="mt-2 text-[14px] leading-relaxed text-muted">
+        The niche comes from the start video. Every opened video is checked against it, and related
+        videos of another niche are skipped without opening. When none is left, the run ends with a warning.
+      </p>
+    </div>
+    <div class="lg:col-span-8">
+      <span class="label text-faint">How the next video is chosen</span>
+      <div class="mt-3 grid gap-2 sm:grid-cols-2" role="radiogroup">
+        {% set about = {
+          "words_ai": "Related titles are ranked by the niche's words; the best go to the AI, which picks the same-niche ones and labels every video.",
+          "ai": "The AI sees the related videos in YouTube's order and picks the same-niche ones. Slower prompts, nothing pre-filtered.",
+          "words": "No AI: a related title needs enough of the niche's words. Free and instant, but misses clickbait titles.",
+          "off": "No niche check: always the first related video, as before.",
+        } %}
+        {% for key, label in matching_modes.items() %}
+        <label class="flex cursor-pointer gap-3 rounded-lg border border-line p-3 transition hover:bg-card has-[:checked]:border-accent has-[:checked]:bg-accent-tint">
+          <input type="radio" name="matching" value="{{ key }}" class="mt-1 accent-[#c8322b]"{% if opts.matching == key %} checked{% endif %}>
+          <span>
+            <span class="block text-[14px] font-medium text-ink">{{ label }}{% if key == "words_ai" %} <span class="text-[12px] font-normal text-faint">recommended</span>{% endif %}</span>
+            <span class="{{ hint }} mt-0.5 leading-relaxed">{{ about[key] }}</span>
+          </span>
+        </label>
+        {% endfor %}
+      </div>
+
+      <span class="mt-6 block label text-faint">How close to the start video</span>
+      <div class="mt-3 grid gap-2 sm:grid-cols-2" role="radiogroup">
+        {% set strict_about = {
+          "niche": "The same kind of channel: another country, person or case counts. Europe's night trains → India's hill railways: kept (both railway history).",
+          "topic": "The niche and the start video's subject: Europe's night trains → India's hill railways: skipped. Runs end sooner.",
+        } %}
+        {% for key, label in strictness.items() %}
+        <label class="flex cursor-pointer gap-3 rounded-lg border border-line p-3 transition hover:bg-card has-[:checked]:border-accent has-[:checked]:bg-accent-tint">
+          <input type="radio" name="strictness" value="{{ key }}" class="mt-1 accent-[#c8322b]"{% if opts.strictness == key %} checked{% endif %}>
+          <span>
+            <span class="block text-[14px] font-medium text-ink">{{ label }}{% if key == "niche" %} <span class="text-[12px] font-normal text-faint">recommended</span>{% endif %}</span>
+            <span class="{{ hint }} mt-0.5 leading-relaxed">{{ strict_about[key] }}</span>
+          </span>
+        </label>
+        {% endfor %}
+      </div>
+
+      <div id="st-ai" class="mt-6">
+        <span class="label text-faint">AI</span>
+        <div class="mt-3 grid gap-3 sm:grid-cols-3">
+          <div class="{{ box }} sm:col-span-3">
+            <span class="{{ hint }}">Which AI checks the niche</span>
+            <div class="mt-2 inline-flex rounded-lg border border-line p-0.5" role="radiogroup">
+              {% for key, label in ai_providers.items() %}
+              <label class="cursor-pointer rounded-md px-4 py-1.5 text-[14px] font-medium text-muted transition has-[:checked]:bg-accent has-[:checked]:text-white">
+                <input type="radio" name="provider" value="{{ key }}" class="sr-only"{% if opts.provider == key %} checked{% endif %}>{{ label }}
+              </label>
+              {% endfor %}
+            </div>
+          </div>
+          <label class="{{ box }}">
+            <span class="{{ hint }}">Model</span>
+            <input id="model" type="text" maxlength="100" value="{{ opts.model }}" placeholder="" class="mt-1 w-full bg-transparent text-[16px] font-medium outline-none placeholder:text-faint">
+          </label>
+          <label class="{{ box }}">
+            <span class="{{ hint }}">Effort</span>
+            <select id="effort" class="mt-1 w-full bg-transparent text-[16px] font-medium outline-none"></select>
+          </label>
+          {{ number("ai_candidates", "Related videos per check", opts.ai_candidates, 3, 40, "Words + AI") }}
+        </div>
+        <p class="mt-2 text-[12px] text-faint">Empty model: the one in .env (<span id="st-env-model"></span>). Research calls use their own instructions and never take a Scripting run's slot.</p>
+      </div>
+
+      <div id="st-words" class="mt-6">
+        <span class="label text-faint">Words</span>
+        <div class="mt-3 grid gap-3 sm:grid-cols-3">
+          {{ number("min_words", "Niche words needed", opts.min_words, 1, 10, "Words only, or if the AI fails") }}
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="flex flex-wrap items-center gap-3 px-6 py-6 sm:px-10">
+    <button type="submit" id="st-save" class="btn btn-primary btn-lg">{{ tool_icon('settings', "h-5 w-5") }}Save settings</button>
+    <button type="button" id="st-reset" class="btn btn-secondary btn-lg">Back to defaults</button>
+    <span id="st-status" class="text-[13px] text-muted" role="status"></span>
+    <span class="ml-auto text-[12px] text-faint">Saved in {{ settings_file }} beside the brands file: private, never in git.</span>
+  </section>
+</form>
+
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const form = $('st-form');
+  const providers = {{ providers.providers | tojson }};
+  const saved = {{ opts | tojson }};
+  const pick = (name) => form.querySelector(`input[name="${name}"]:checked`)?.value;
+
+  function efforts(keep) {
+    const p = providers.find((x) => x.key === pick('provider')) || providers[0];
+    const sel = $('effort');
+    sel.replaceChildren(new Option(`From .env (${p.effort})`, ''), ...p.efforts.map((e) => new Option(e, e)));
+    sel.value = p.efforts.includes(keep) ? keep : '';
+    $('model').placeholder = p.model;
+    $('st-env-model').textContent = `${p.label}: ${p.model}`;
+  }
+  function sections() {
+    const m = pick('matching');
+    $('st-ai').classList.toggle('opacity-40', !(m === 'words_ai' || m === 'ai'));
+    $('st-words').classList.toggle('opacity-40', m === 'off');
+  }
+  form.addEventListener('change', (e) => {
+    if (e.target.name === 'provider') efforts($('effort').value);
+    sections();
+    $('st-status').textContent = 'Not saved yet';
+  });
+  efforts(saved.effort);
+  sections();
+
+  function values() {
+    const n = (id) => parseInt($(id).value, 10);
+    return {
+      videos: n('videos'), watch_s: n('watch_s'), max_age_days: n('max_age_days') || 0,
+      max_browsers: n('max_browsers'), show_browser: $('show_browser').checked,
+      matching: pick('matching'), strictness: pick('strictness'), provider: pick('provider'), model: $('model').value.trim(),
+      effort: $('effort').value, ai_candidates: n('ai_candidates'), min_words: n('min_words'),
+    };
+  }
+  async function save(body) {
+    $('st-save').disabled = true;
+    try {
+      const r = await fetch('/api/research/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ values: body }) });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.detail || 'Not saved');
+      $('st-status').textContent = `Saved · ${data.text}`;
+      try { localStorage.removeItem('rs-show'); } catch { /* no storage */ }
+      return data.values;
+    } catch (err) {
+      $('st-status').textContent = err.message;
+    } finally { $('st-save').disabled = false; }
+  }
+  form.addEventListener('submit', async (e) => { e.preventDefault(); await save(values()); });
+  $('st-reset').addEventListener('click', async () => {
+    const r = await fetch('/api/research/settings');
+    const { defaults } = await r.json();
+    if (await save(defaults)) location.reload();
+  });
+})();
+</script>

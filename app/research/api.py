@@ -8,7 +8,7 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
-from app.research import runs
+from app.research import options, runs
 from app.research.youtube import video_id
 
 router = APIRouter(prefix="/api/research", tags=["research"])
@@ -18,10 +18,11 @@ MAX_LINKS = 20
 
 class StartRequest(BaseModel):
     urls: list[str] = Field(..., min_length=1)
-    videos: int = Field(10, ge=1, le=50)      # videos to open per link, the start one included
-    watch_s: int = Field(10, ge=1, le=600)    # seconds to watch each
-    max_age_days: int | None = Field(30, ge=1, le=3650)  # open only videos this new; None = any
-    show_browser: bool | None = None          # None: the RESEARCH_HEADLESS setting
+    # Left out: the value from Research › Settings.
+    videos: int | None = Field(None, ge=1, le=50)     # videos to open per link, the start one included
+    watch_s: int | None = Field(None, ge=1, le=600)   # seconds to watch each
+    max_age_days: int | None = Field(None, ge=0, le=3650)  # open only videos this new; 0 / null = any
+    show_browser: bool | None = None
 
 
 @router.post("/runs")
@@ -34,8 +35,30 @@ async def start_runs(req: StartRequest):
     bad = [u for u in urls if not video_id(u)]
     if bad:
         raise HTTPException(422, "Not a YouTube video link: " + ", ".join(bad[:3]))
-    started = [runs.start(u, req.videos, req.watch_s, req.show_browser, req.max_age_days) for u in urls]
+    opts = options.load()
+    days = req.max_age_days if "max_age_days" in req.model_fields_set else opts["max_age_days"]
+    started = [runs.start(u, req.videos or opts["videos"], req.watch_s or opts["watch_s"],
+                          req.show_browser, days or None, opts) for u in urls]
     return {"runs": [runs.summary(r) for r in started]}
+
+
+class SettingsRequest(BaseModel):
+    values: dict
+
+
+@router.get("/settings")
+def get_settings():
+    return {"values": options.load(), "defaults": options.defaults(),
+            "file": options.FILE_NAME}
+
+
+@router.post("/settings")
+def save_settings(req: SettingsRequest):
+    try:
+        values = options.save(req.values)
+    except OSError as exc:
+        raise HTTPException(500, f"The settings couldn't be saved: {exc}") from exc
+    return {"values": values, "text": options.describe(values)}
 
 
 @router.get("/runs")

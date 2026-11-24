@@ -73,6 +73,14 @@ browsers** switch opens a window per link (on WSL through WSLg); `RESEARCH_HEADL
 hidden the default. Runs are saved to
 `app/output/_research/` (not in git).
 
+Each run keeps to its start video's niche: related videos of another niche are skipped without
+being opened, and when none is left the run ends with a warning. Words from the start video
+rank the related titles and an AI (Claude or Codex, through the same CLIs as Scripting, with
+its own instructions and its own limit of 2 calls at a time) labels every video's niche and
+picks the next ones. **Research › Settings** sets the run defaults (videos, watch time, date
+range, browsers) and the niche check (words / AI, Claude or Codex, model, effort, same niche or
+same topic). They're saved in `___research.json` beside the brands file, never in git.
+
 ## Run
 
 ```bash

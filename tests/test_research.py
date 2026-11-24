@@ -3,6 +3,7 @@
 import asyncio
 import json
 import time
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -109,7 +110,7 @@ def test_details_reads_every_field():
     assert first == {"id": "BBBBBBBBBB2", "url": "https://www.youtube.com/watch?v=BBBBBBBBBB2",
                      "title": "Day 25", "channel": "Other Channel", "views": 1200000,
                      "views_text": "1.2M views", "age": "3 weeks ago", "days_ago": 21,
-                     "length": "10:05"}
+                     "days_ago_max": 27, "length": "10:05"}
     assert second["title"] == "Morning" and second["length"] == "1:02:03"
 
 
@@ -130,7 +131,9 @@ def fake_browser(monkeypatch):
     browsers were open at the same time."""
     state = {"open": 0, "most": 0, "urls": []}
 
-    async def explore(url, *, videos, watch_s, headless, slot, max_age_days, on_event, stopped):
+    async def explore(url, *, videos, watch_s, headless, slot, max_age_days, matcher, on_event,
+                      stopped):
+        state.setdefault("matchers", []).append(matcher)
         state["open"] += 1
         state.setdefault("calls", []).append({"url": url, "headless": headless, "slot": slot,
                                               "videos": videos, "watch_s": watch_s,
@@ -302,6 +305,14 @@ def test_days_ago(age, days):
     assert yt.days_ago(age) == days
 
 
+@pytest.mark.parametrize("age, oldest", [
+    ("2 days ago", 2), ("5 hours ago", 1), ("3 weeks ago", 27), ("4 weeks ago", 34),
+    ("1 month ago", 59), ("11mo ago", 359), ("1 year ago", 729), ("", None),
+])
+def test_days_ago_max(age, oldest):
+    assert yt.days_ago_max(age) == oldest
+
+
 def test_days_old_and_views_per_subscriber():
     from datetime import datetime, timezone
     now = datetime(2026, 1, 15, 12, tzinfo=timezone.utc)
@@ -315,8 +326,11 @@ def test_days_old_and_views_per_subscriber():
 def test_next_video_keeps_to_the_days_set():
     from app.research.explorer import _next
     results = [{"related": [{"id": "old", "days_ago": 400}, {"id": "seen", "days_ago": 1},
-                            {"id": "unknown", "days_ago": None}, {"id": "new", "days_ago": 6}]}]
-    assert _next(results, {"seen"}, 30) == "new"
+                            {"id": "unknown", "days_ago": None},
+                            {"id": "month", "days_ago": 30, "days_ago_max": 59},
+                            {"id": "new", "days_ago": 6, "days_ago_max": 6}]}]
+    assert _next(results, {"seen"}, 30) == "new"          # "1 month ago" may be 59 days: no
+    assert _next(results, {"seen"}, 60) == "month"
     assert _next(results, {"seen"}, None) == "old"          # any age: YouTube's order
     assert _next(results, {"seen", "new"}, 30) is None       # nothing left in the range
     later = results + [{"related": [{"id": "fresh", "days_ago": 2}]}]
@@ -360,3 +374,213 @@ def test_page_defaults():
     assert 'id="rs-videos" type="number" min="1" max="50" value="10"' in page
     assert 'id="rs-watch" type="number" min="1" max="600" value="10"' in page
     assert 'id="rs-days" type="number" min="1" max="3650" value="30"' in page
+
+
+# ---------------------------------------------------------------- settings (private file)
+
+def test_settings_file_is_private_and_every_value_is_checked():
+    from app.research import options
+    assert options.path().name == "___research.json"
+    assert options.path().parent == settings.scripts_config_dir.parent   # beside ___brands.json
+    gitignore = (Path(__file__).parent.parent / ".gitignore").read_text(encoding="utf-8")
+    assert "___research.json" in gitignore.splitlines()
+    assert options.load() == options.defaults()                  # no file yet
+    saved = options.save({"videos": 7, "watch_s": "12", "max_age_days": 0, "matching": "ai",
+                          "provider": "codex", "effort": "ultra", "model": " gpt-x ",
+                          "max_browsers": 99, "min_words": "x", "show_browser": "yes"})
+    assert saved["videos"] == 7 and saved["watch_s"] == 12 and saved["max_age_days"] == 0
+    assert (saved["matching"], saved["provider"], saved["effort"], saved["model"]) == (
+        "ai", "codex", "ultra", "gpt-x")
+    d = options.defaults()
+    assert saved["max_browsers"] == d["max_browsers"] and saved["min_words"] == d["min_words"]
+    assert saved["show_browser"] == d["show_browser"]            # not a true/false: default
+    assert options.load() == saved
+    assert options.clean({"provider": "claude", "effort": "ultra"})["effort"] == "low"
+    options.path().write_text("{broken", encoding="utf-8")
+    assert options.load() == options.defaults()                  # a broken file never breaks a run
+    assert options.describe(saved) == "AI only · Codex (gpt-x, ultra effort) · same niche"
+    assert options.clean({"strictness": "topic"})["strictness"] == "topic"
+    assert options.clean({"strictness": "x"})["strictness"] == "niche"
+    assert options.describe(options.clean({"matching": "words"})) == "Words only"
+
+
+def test_settings_api_and_page():
+    client = TestClient(app)
+    got = client.get("/api/research/settings").json()
+    assert got["values"] == got["defaults"] and got["file"] == "___research.json"
+    r = client.post("/api/research/settings", json={"values": {**got["values"], "videos": 3,
+                                                               "matching": "words"}})
+    assert r.status_code == 200 and r.json()["values"]["videos"] == 3
+    assert r.json()["text"] == "Words only"
+    page = client.get("/research/settings").text
+    assert 'id="st-form"' in page and 'value="words" class="mt-1 accent-[#c8322b]" checked' in page
+    research = client.get("/research").text                      # the Research page follows it
+    assert 'id="rs-videos" type="number" min="1" max="50" value="3"' in research
+    assert "Words only" in research and 'href="/research/settings"' in research
+
+
+def test_runs_start_from_the_settings_and_keep_the_matching(fake_browser, monkeypatch):
+    from app.research import options
+    from app.research.niche import Matcher
+    monkeypatch.setattr(settings, "research_max_browsers", 4)
+    options.save({**options.defaults(), "videos": 2, "watch_s": 3, "max_age_days": 7,
+                  "matching": "words_ai", "provider": "codex"})
+    with TestClient(app) as client:
+        a = client.post("/api/research/runs", json={"urls": ["https://youtu.be/AAAAAAAAAA1"]}).json()["runs"][0]
+        assert (a["videos_wanted"], a["watch_s"], a["max_age_days"]) == (2, 3, 7)
+        assert a["matching"]["matching"] == "words_ai" and a["matching"]["provider"] == "codex"
+        assert a["matching"]["text"].startswith("Words + AI · Codex")
+        _wait(client, [a["id"]])
+        options.save({**options.defaults(), "matching": "off"})
+        b = client.post("/api/research/runs", json={"urls": ["https://youtu.be/AAAAAAAAAA1"],
+                                                    "videos": 1}).json()["runs"][0]
+        _wait(client, [b["id"]])
+    first, second = fake_browser["matchers"]
+    assert isinstance(first, Matcher) and first.mode == "words_ai" and second is None
+
+
+# ---------------------------------------------------------------- the niche
+
+START = {"title": "Why Night Trains Disappeared | Railway History", "keywords": ["night trains", "railway"],
+         "hashtags": ["#RailwayHistory", "#trains"], "description": "", "channel": {"name": "Rails"},
+         "related": []}
+CANDS = [
+    {"id": "R1", "title": "The Last Night Train of Europe", "channel": "Rails", "age": "2 days ago"},
+    {"id": "R2", "title": "Top 10 Shocking Cooking Secrets", "channel": "Kitchen", "age": "1 day ago"},
+    {"id": "R3", "title": "Railway History: Steam to Electric", "channel": "Rails", "age": "3 days ago"},
+]
+
+
+def test_words_and_niche_words():
+    from app.research.niche import profile, shared, words
+    assert words("The SHOCKING Truth about Night Trains!!") == ["night", "train"]
+    assert words("Kya hai yeh? 2026 Railway") == ["railway"]
+    prof = profile(START)
+    assert prof["railway"] >= 3 and prof["train"] >= 3 and "history" in prof
+    assert shared(prof, "The Last Night Train of Europe") == ["night", "train"]
+    assert shared(prof, "Top 10 Shocking Cooking Secrets") == []
+
+
+def _matcher(mode, ask=None, **extra):
+    from app.research import options
+    from app.research.niche import Matcher
+    return Matcher(options.clean({"matching": mode, **extra}), ask=ask)
+
+
+def test_words_only_keeps_titles_with_enough_niche_words():
+    m = _matcher("words", min_words=2)
+    first = asyncio.run(m.check(START, CANDS, start=True))
+    assert first.match is True and first.via == "start" and first.picks == ["R1", "R3"]
+    assert list(first.rejected) == ["R2"] and "0 of the 2" in first.rejected["R2"]
+    strict = _matcher("words", min_words=3)
+    assert asyncio.run(strict.check(START, CANDS, start=True)).picks == []
+    assert first.niche["keywords"]
+    later = asyncio.run(m.check({**START, "title": "Cooking pasta at home", "keywords": []}, [], start=False))
+    assert later.match is False and later.via == "words"
+
+
+def test_ai_names_the_niche_and_picks_by_number():
+    asked = []
+
+    async def ask(provider, prompt, *, model, effort):
+        asked.append((provider, prompt, model, effort))
+        if len(asked) == 1:
+            return ('Sure: ```json\n{"niche": "History › Railways", "topic": "Night trains",'
+                    ' "description": "Rail history.",'
+                    ' "keywords": ["railway", "locomotive"], "same_niche": [2, 1, 9],'
+                    ' "other": [{"n": 3, "why": "Cooking, not railways"}]}\n```')
+        return '{"niche": "Travel › Trains", "same": false, "why": "A travel vlog.", "same_niche": [1]}'
+
+    m = _matcher("words_ai", ask=ask, provider="codex", model="m1", effort="high")
+    first = asyncio.run(m.check(START, CANDS, start=True))
+    assert first.picks == ["R3", "R1"] and first.rejected == {"R2": "Cooking, not railways"}
+    assert first.niche == {"label": "History › Railways", "topic": "Night trains",
+                           "description": "Rail history.", "keywords": ["railway", "locomotive"],
+                           "strictness": "niche"}
+    assert "another country, person or case in the same niche counts" in asked[0][1]
+    provider, prompt, model, effort = asked[0]
+    assert (provider, model, effort) == ("codex", "m1", "high")
+    assert "1. The Last Night Train of Europe" in prompt     # ranked by words: R1, R3 then R2
+    assert "2. Railway History" in prompt and "3. Top 10 Shocking Cooking" in prompt
+    assert prompt.index("Railway History") < prompt.index("Cooking")
+    assert m.words["locomotive"] >= 3                          # the AI's keywords join the words
+    later = asyncio.run(m.check({**START, "title": "Train trip vlog"}, CANDS[:1], start=False))
+    assert later.match is False and later.label == "Travel › Trains" and later.picks == []
+    assert "Niche: History › Railways" in asked[1][1]
+
+
+def test_when_the_ai_fails_words_decide():
+    from app.cli import CliError
+
+    async def ask(*a, **k):
+        raise CliError("Claude CLI not found")
+
+    m = _matcher("ai", ask=ask, min_words=1)
+    first = asyncio.run(m.check(START, CANDS, start=True))
+    assert first.via.startswith("words (AI failed: Claude CLI not found")
+    assert first.picks == ["R1", "R3"] and list(first.rejected) == ["R2"]
+
+
+def test_parse_json():
+    from app.research.ai import parse_json
+    assert parse_json('{"a": 1}') == {"a": 1}
+    assert parse_json('Here you go:\n```json\n{"a": [1, 2]}\n```\nDone.') == {"a": [1, 2]}
+    assert parse_json('The answer {"a": {"b": 2}} as asked') == {"a": {"b": 2}}
+    with pytest.raises(ValueError):
+        parse_json("no json here")
+
+
+def test_checks_skip_other_niches_and_the_run_ends_with_a_warning():
+    from app.research.explorer import _apply_check, _end
+    from app.research.niche import Check
+    events = []
+    approved, rejected, in_niche = [], {}, []
+    known = {r["id"]: r for r in CANDS}
+    video = {"id": "S", "related": CANDS}
+    chk = Check(label="History › Railways", match=True, via="AI", picks=["R3", "R1"],
+                rejected={"R2": "Cooking"}, niche={"label": "History › Railways"})
+    asyncio.run(_apply_check(chk, video, approved, rejected, known, in_niche, events.append))
+    assert approved == ["R3", "R1"] and rejected == {"R2": "Cooking"} and in_niche == [video]
+    assert video["niche"] == {"label": "History › Railways", "topic": "", "match": True,
+                              "reason": "", "via": "AI"}
+    off = next(e for e in events if e["type"] == "off_niche")["items"]
+    assert off[0]["title"] == "Top 10 Shocking Cooking Secrets" and off[0]["why"] == "Cooking"
+    other = {"id": "X", "related": []}
+    asyncio.run(_apply_check(Check(match=False, picks=["Z"]), other, approved, rejected, known,
+                             in_niche, events.append))
+    assert approved == ["R3", "R1"] and other not in in_niche     # another niche: not followed
+
+    class M:
+        niche = {"label": "History › Railways"}
+    end = _end(M(), 30)
+    assert end["warning"] is True and "History › Railways" in end["reason"] and "30 days" in end["reason"]
+    assert _end(None, None)["warning"] is False
+
+
+# ---------------------------------------------------------------- the AI calls stay apart
+
+def test_research_ai_uses_its_own_instructions_and_never_a_scripting_slot(monkeypatch):
+    from app.cli import common
+    from app.research import ai
+    sent = {}
+
+    async def fake_process(argv, stdin, **kw):
+        sent["argv"], sent["stdin"] = argv, stdin
+        out = json.dumps({"type": "result", "subtype": "success", "is_error": False,
+                          "result": '{"ok": true}', "session_id": "s"})
+        return out.encode(), b"", 0, 0.1
+
+    monkeypatch.setattr(ai, "run_process", fake_process)
+
+    async def go():
+        held = common.run_slot("claude", 2, "Claude")   # Scripting's Claude slots: all taken
+        async with held:
+            async with common.run_slot("claude", 2, "Claude"):
+                return await ai.ask("claude", "Which niche?", effort="low")
+
+    assert json.loads(asyncio.run(go())) == {"ok": True}
+    argv = sent["argv"]
+    system = argv[argv.index("--system-prompt") + 1]
+    assert system == ai.RESEARCH_SYSTEM                    # never the brands file's writer prompt
+    assert argv[argv.index("--tools") + 1] == "" and "--allowedTools" not in argv
+    assert argv[argv.index("--effort") + 1] == "low"

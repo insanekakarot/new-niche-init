@@ -17,8 +17,10 @@
     {% endfor %}
   </nav>
 
-  {% if page.status == 'live' %}
+  {% if page.slug == 'research' %}
   {% include "_research_tool.html" %}
+  {% elif page.slug == 'settings' %}
+  {% include "_research_settings.html" %}
   {% else %}
   <section class="grid gap-px bg-line lg:grid-cols-12">
     <div class="bg-paper px-6 py-10 sm:px-10 lg:col-span-5">
@@ -54,4 +56,4 @@
   </section>
   {% endif %}
 {% endblock %}
-{% block scripts %}{% if page.status == 'live' %}{% include "_research_tool_js.html" %}{% endif %}{% endblock %}
+{% block scripts %}{% if page.slug == 'research' %}{% include "_research_tool_js.html" %}{% endif %}{% endblock %}

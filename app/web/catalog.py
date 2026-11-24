@@ -92,7 +92,8 @@ class ResearchPage:
         return self.name
 
 
-# New-niche research. Research is live (app/research); Dashboard and Analytics come later.
+# New-niche research. Research and Settings are live (app/research); Dashboard and Analytics
+# come later.
 RESEARCH: tuple[ResearchPage, ...] = (
     ResearchPage("dashboard", "Dashboard",
                  "Every niche under research at a glance: where each one stands and what's next."),
@@ -102,6 +103,10 @@ RESEARCH: tuple[ResearchPage, ...] = (
                  status="live"),
     ResearchPage("analytics", "Analytics",
                  "Compare researched niches by the numbers to pick the next one."),
+    ResearchPage("settings", "Settings",
+                 "How research runs: videos, watch time, date range, browsers, and how each "
+                 "run keeps to its niche (words, AI, Claude or Codex).",
+                 status="live"),
 )
 
 RESEARCH_BY_SLUG: dict[str, ResearchPage] = {p.slug: p for p in RESEARCH}

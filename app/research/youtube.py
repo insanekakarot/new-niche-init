@@ -137,6 +137,24 @@ def days_ago(age: str) -> int | None:
     return int(m.group(1)) * _DAYS.get(unit, 0)
 
 
+# How much older than its number an age can be: YouTube rounds down, so "1 month ago" is
+# anything from 30 to 59 days and "4 weeks ago" from 28 to 34.
+_SPREAD = {0: 1, 1: 0, 7: 6, 30: 29, 365: 364}
+
+
+def days_ago_max(age: str) -> int | None:
+    """The oldest an age can be: '1 month ago' -> 59, '3 weeks ago' -> 27, '2 days ago' -> 2.
+    The date range uses this, so a related video is opened only if it's surely within it."""
+    low = days_ago(age)
+    if low is None:
+        return None
+    m = _AGO.search(age)
+    unit = m.group(2).lower()
+    unit = unit if unit in _DAYS else unit.rstrip("s")
+    per = _DAYS.get(unit, 0)
+    return low + _SPREAD.get(per, 0)
+
+
 def days_since(iso: str, now: datetime | None = None) -> int | None:
     """Whole days from an ISO date ('2026-11-21T09:00:36-08:00') until now."""
     try:
@@ -306,6 +324,7 @@ def related(data: dict, limit: int = 20) -> list[dict]:
             "views_text": texts[views_i] if views_i is not None else "",
             "age": age,
             "days_ago": days_ago(age),
+            "days_ago_max": days_ago_max(age),
             "length": text(badge.get("text")) if badge else "",
         })
     for r in _walk(data, "compactVideoRenderer"):  # the older layout
@@ -320,5 +339,6 @@ def related(data: dict, limit: int = 20) -> list[dict]:
             "views_text": text(r.get("shortViewCountText") or r.get("viewCountText")),
             "age": text(r.get("publishedTimeText")), "length": text(r.get("lengthText")),
             "days_ago": days_ago(text(r.get("publishedTimeText"))),
+            "days_ago_max": days_ago_max(text(r.get("publishedTimeText"))),
         })
     return out[:limit]

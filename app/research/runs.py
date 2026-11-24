@@ -1,8 +1,9 @@
 """Research runs: one per start link, each in its own browser, several at the same time.
 
 A run explores from its link (app/research/explorer.py) in the background; the page polls
-GET /api/research/runs/{id}. At most RESEARCH_MAX_BROWSERS runs have a browser open at once
-(default 4); more wait their turn ("queued"). Every run is saved after each video to
+GET /api/research/runs/{id}. At most "Browsers at once" runs (Research › Settings, default
+RESEARCH_MAX_BROWSERS = 4) have a browser open at once; more wait their turn ("queued").
+Each run keeps to its start video's niche as set in the settings (app/research/niche.py). Every run is saved after each video to
 <output_dir>/_research/<run id>.json, so results survive a restart.
 """
 
@@ -15,8 +16,8 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-from app.config import settings
-from app.research import explorer
+from app.research import explorer, options
+from app.research.niche import Matcher
 from app.research.stats import with_stats
 from app.web import outputs
 
@@ -38,7 +39,7 @@ def folder() -> Path:
 def _gate_for_loop() -> asyncio.Semaphore:
     """The limit on open browsers (made again if the setting or the event loop changed)."""
     global _gate, _gate_key
-    key = (max(1, settings.research_max_browsers), id(asyncio.get_running_loop()))
+    key = (options.load()["max_browsers"], id(asyncio.get_running_loop()))
     if _gate is None or _gate_key != key:
         _gate, _gate_key = asyncio.Semaphore(key[0]), key
     return _gate
@@ -57,7 +58,8 @@ def summary(run: dict) -> dict:
     first = run["videos"][0] if run["videos"] else None
     return {k: run.get(k) for k in ("id", "url", "status", "videos_wanted", "watch_s",
                                     "max_age_days", "show_browser", "created_at", "finished_at",
-                                    "error", "ended", "progress")} | {
+                                    "error", "ended", "warning", "progress", "niche",
+                                    "matching")} | {
         "videos_done": len(run["videos"]),
         "start_title": first["title"] if first else "",
         "start_thumbnail": first["thumbnail"] if first else "",
@@ -65,9 +67,11 @@ def summary(run: dict) -> dict:
 
 
 def start(url: str, videos: int, watch_s: int, show_browser: bool | None = None,
-          max_age_days: int | None = None) -> dict:
+          max_age_days: int | None = None, opts: dict | None = None) -> dict:
     """Create a run and start it in the background (needs a running event loop).
-    show_browser: None = the RESEARCH_HEADLESS setting. max_age_days: None = any age."""
+    show_browser: None = the settings' default. max_age_days: None = any age.
+    opts: the research settings (Research › Settings); the niche matching comes from them."""
+    opts = opts or options.load()
     stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     run = {
         "id": f"{stamp}-{secrets.token_hex(3)}",
@@ -76,7 +80,14 @@ def start(url: str, videos: int, watch_s: int, show_browser: bool | None = None,
         "watch_s": watch_s,
         "max_age_days": max_age_days,
         "ended": None,                # why it stopped before videos_wanted, if it did
-        "show_browser": (not settings.research_headless) if show_browser is None else show_browser,
+        "warning": False,             # ended because nothing in the niche was left
+        "show_browser": opts["show_browser"] if show_browser is None else show_browser,
+        # How the niche was kept, as set when the run started.
+        "matching": {k: opts[k] for k in ("matching", "strictness", "provider", "model",
+                                          "effort", "ai_candidates", "min_words")}
+                    | {"text": options.describe(opts)},
+        "niche": None,                # the start video's niche: {label, description, keywords}
+        "off_niche": [],              # related videos skipped as another niche (not opened)
         "status": "queued",           # queued | running | done | stopped | failed
         "created_at": time.time(),
         "started_at": None,
@@ -90,6 +101,13 @@ def start(url: str, videos: int, watch_s: int, show_browser: bool | None = None,
     _save(run)
     _tasks[run["id"]] = asyncio.get_running_loop().create_task(_run(run))
     return run
+
+
+def _matcher(run: dict) -> Matcher | None:
+    m = run.get("matching") or {}
+    if m.get("matching", "off") == "off":
+        return None
+    return Matcher(options.clean(m))
 
 
 def _take_slot() -> int:
@@ -108,7 +126,13 @@ async def _run(run: dict) -> None:
             p.update(n=e["n"], second=0, ad=False, note="Opening the video")
         elif e["type"] == "watching":
             p.update(n=e["n"], second=e["second"], ad=e["ad"],
-                     note="Ad playing" if e["ad"] else "Watching")
+                     note="Checking the niche" if e.get("checking")
+                     else "Ad playing" if e["ad"] else "Watching")
+        elif e["type"] == "niche":
+            run["niche"] = e["niche"]
+            _save(run)
+        elif e["type"] == "off_niche":
+            run["off_niche"].extend(e["items"])
         elif e["type"] == "video":
             run["videos"].append(e["video"])
             p.update(note="Reading the details")
@@ -117,6 +141,7 @@ async def _run(run: dict) -> None:
             run["skipped"].append({"id": e["id"], "error": e["error"]})
         elif e["type"] == "end":
             run["ended"] = e["reason"]
+            run["warning"] = bool(e.get("warning"))
 
     try:
         async with _gate_for_loop():
@@ -130,7 +155,8 @@ async def _run(run: dict) -> None:
             try:
                 await explore(run["url"], videos=run["videos_wanted"], watch_s=run["watch_s"],
                               headless=not run["show_browser"], slot=slot,
-                              max_age_days=run["max_age_days"], on_event=on_event,
+                              max_age_days=run["max_age_days"], matcher=_matcher(run),
+                              on_event=on_event,
                               stopped=lambda: rid in _stop)
             finally:
                 _slots.discard(slot)
