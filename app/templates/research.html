@@ -1,0 +1,52 @@
+{% extends "site.html" %}
+{% from "_page.html" import page_header %}
+{% from "_tool_icons.html" import tool_icon %}
+{% block title %}{{ page.name }} — Research — New Niche Overall{% endblock %}
+{% block content %}
+  {{ page_header("%02d" | format(page_number), "Research / " ~ page.name, "New niche", page.name | lower ~ ".",
+                 page.description, icon=page.slug, live=false, aside="Research") }}
+
+  {# The three research pages as tabs, in the menu's order. #}
+  <nav class="flex gap-1 overflow-x-auto border-b border-line px-4 sm:px-8" aria-label="Research pages">
+    {% for p in pages %}
+    {% set on = p.slug == page.slug %}
+    <a href="{{ p.path }}"{% if on %} aria-current="page"{% endif %}
+       class="-mb-px flex items-center gap-2 whitespace-nowrap border-b-2 px-3 py-3.5 text-[14px] font-medium transition {% if on %}border-accent text-accent{% else %}border-transparent text-muted hover:text-ink{% endif %}">
+      {{ tool_icon(p.slug, "h-[18px] w-[18px]") }}{{ p.name }}
+    </a>
+    {% endfor %}
+  </nav>
+
+  <section class="grid gap-px bg-line lg:grid-cols-12">
+    <div class="bg-paper px-6 py-10 sm:px-10 lg:col-span-5">
+      <span class="inline-flex items-center gap-2 rounded border border-line px-2 py-0.5 text-[12px] text-faint">
+        <span class="h-1.5 w-1.5 rounded-full bg-faint"></span>Planned
+      </span>
+      <h2 class="mt-5 font-serif text-[28px] font-medium leading-tight">Not built yet</h2>
+      <p class="mt-3 text-[15px] leading-[1.75] text-muted">
+        New-niche research is the first step, before a brand gets scripts. How a niche is
+        researched is being worked out; this page fills in once that process is set.
+      </p>
+      <a href="/scripting" class="btn btn-secondary group mt-7">Open the Scripting Tool <span class="arrow" aria-hidden="true">→</span></a>
+    </div>
+    <div class="bg-paper px-6 py-10 sm:px-10 lg:col-span-7">
+      <span class="label text-faint">The research section</span>
+      <ul class="mt-5 divide-y divide-line border-y border-line">
+        {% for p in pages %}
+        <li>
+          <a href="{{ p.path }}" class="group flex items-start gap-4 py-4 transition">
+            <span class="mt-0.5 flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-md {% if p.slug == page.slug %}bg-accent text-white{% else %}bg-accent-tint text-accent{% endif %}">{{ tool_icon(p.slug, "h-5 w-5") }}</span>
+            <span class="min-w-0 flex-1">
+              <span class="flex items-baseline justify-between gap-3">
+                <span class="font-serif text-[18px] font-medium group-hover:text-accent">{{ p.name }}</span>
+                <span class="flex-shrink-0 text-[12px] text-faint">{% if p.slug == page.slug %}You're here{% else %}Planned{% endif %}</span>
+              </span>
+              <span class="mt-1 block text-[14px] leading-relaxed text-muted">{{ p.description }}</span>
+            </span>
+          </a>
+        </li>
+        {% endfor %}
+      </ul>
+    </div>
+  </section>
+{% endblock %}

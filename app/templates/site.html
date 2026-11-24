@@ -84,37 +84,54 @@
           <span class="hidden whitespace-nowrap font-serif text-[21px] min-[420px]:inline">New Niche</span>
         </a>
       </div>
-      {# Every tool is a link in the bar (planned ones in grey), then Admin. The current page is
-         marked. Narrower windows get the same links in the menu button instead. #}
-      <nav class="hidden items-center gap-1 text-[14px] font-medium lg:flex" aria-label="Tools">
-        {% for t in nav_tools %}
-        {% set on = here == t.path or here.startswith(t.path ~ '/') %}
-        <a href="{{ t.path }}" title="{{ t.name }}{% if t.status != 'live' %} (planned){% endif %}"{% if on %} aria-current="page"{% endif %}
-           class="whitespace-nowrap rounded-md px-2.5 py-1.5 transition hover:bg-card {% if on %}bg-card text-accent{% elif t.status != 'live' %}text-muted hover:text-ink{% endif %}">{{ t.short_name }}</a>
+      {# Two menus, Research then Tools: each item is an icon + its name (planned ones say so),
+         the current page is marked. Narrower windows get the same links in the menu button. #}
+      {% from "_tool_icons.html" import tool_icon %}
+      {% macro menu_item(item, here) -%}
+      {% set on = here == item.path or (item.path != '/research' and here.startswith(item.path ~ '/')) %}
+      <a href="{{ item.path }}"{% if on %} aria-current="page"{% endif %}
+         class="flex items-center gap-3 rounded-md px-3 py-2.5 text-[14px] transition hover:bg-card{% if on %} bg-card text-accent{% endif %}">
+        <span class="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-md {% if item.status == 'live' %}bg-accent text-white{% else %}bg-accent-tint text-accent{% endif %}">{{ tool_icon(item.slug, "h-[18px] w-[18px]") }}</span>
+        <span class="flex-1">{{ item.short_name }}</span>
+        {% if item.status == 'live' %}<span class="rounded bg-accent-tint px-1.5 py-0.5 text-[11px] font-medium text-accent">Live</span>{% else %}<span class="text-[11px] text-faint">Planned</span>{% endif %}
+      </a>
+      {%- endmacro %}
+      {% set in_research = here == '/research' or here.startswith('/research/') %}
+      {% set in_tools = nav_tools | selectattr('path', 'equalto', here) | list | length > 0 or here.startswith('/scripting/') %}
+      <nav class="hidden items-center gap-1 text-[14px] font-medium md:flex" aria-label="Main">
+        {% for label, icon, items, on in [('Research', 'research-menu', nav_research, in_research), ('Tools', 'tools-menu', nav_tools, in_tools)] %}
+        <div class="dd relative" data-dd data-menu="{{ label | lower }}">
+          <button type="button" data-dd-toggle aria-expanded="false"
+                  class="flex items-center gap-2 whitespace-nowrap rounded-md px-2.5 py-1.5 transition hover:bg-card{% if on %} bg-card text-accent{% endif %}">
+            {{ tool_icon(icon, "h-[18px] w-[18px]") }}{{ label }}
+            <svg class="dd-chevron h-3.5 w-3.5 text-faint" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.06l3.71-3.83a.75.75 0 111.08 1.04l-4.25 4.39a.75.75 0 01-1.08 0L5.21 8.27a.75.75 0 01.02-1.06z" clip-rule="evenodd"/></svg>
+          </button>
+          <div class="dd-panel absolute left-0 top-full z-40 mt-2 w-72 overflow-hidden rounded-lg border border-line bg-paper p-1 font-normal shadow-[0_8px_24px_rgba(30,28,26,.08)]">
+            {% for item in items %}{{ menu_item(item, here) }}{% endfor %}
+          </div>
+        </div>
         {% endfor %}
-        <span class="mx-1.5 h-4 w-px bg-line" aria-hidden="true"></span>
-        {% set on = here.startswith('/admin') %}
-        <a href="/admin/scripts/dashboard"{% if on %} aria-current="page"{% endif %}
-           class="whitespace-nowrap rounded-md px-2.5 py-1.5 transition hover:bg-card{% if on %} bg-card text-accent{% endif %}">Admin</a>
       </nav>
       <div class="ml-auto flex items-center gap-3">
-        <a href="/scripting" class="btn btn-primary whitespace-nowrap"><span class="hidden sm:inline">Open </span>Scripting</a>
-        <!-- Narrower windows: the tool / Admin links above are hidden, so they live in this menu
+        {% set on = here.startswith('/admin') %}
+        <a href="/admin/scripts/dashboard"{% if on %} aria-current="page"{% endif %}
+           class="btn btn-secondary hidden md:inline-flex{% if on %} text-accent{% endif %}">{{ tool_icon('admin', "h-4 w-4") }}Admin</a>
+        <a href="/scripting" class="btn btn-primary whitespace-nowrap">{{ tool_icon('scripting', "hidden h-4 w-4 sm:block") }}<span class="hidden sm:inline">Open </span>Scripting</a>
+        <!-- Narrower windows: the menus and Admin above are hidden, so they live in this menu
              (last in the bar, so its panel opens inside the window) -->
-        <div class="dd relative lg:hidden" data-dd>
+        <div class="dd relative md:hidden" data-dd>
           <button type="button" data-dd-toggle aria-expanded="false" aria-label="Menu" class="btn btn-secondary px-3">
             <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M2 4.75A.75.75 0 012.75 4h14.5a.75.75 0 010 1.5H2.75A.75.75 0 012 4.75zm0 5A.75.75 0 012.75 9h14.5a.75.75 0 010 1.5H2.75A.75.75 0 012 9.75zm0 5a.75.75 0 01.75-.75h14.5a.75.75 0 010 1.5H2.75a.75.75 0 01-.75-.75z" clip-rule="evenodd"/></svg>
           </button>
-          <div class="dd-panel absolute right-0 top-full z-40 mt-2 w-64 max-w-[calc(100vw-2rem)] overflow-hidden rounded-lg border border-line bg-paper p-1 shadow-[0_8px_24px_rgba(30,28,26,.08)]">
-            <div class="px-3 pb-1 pt-2 label text-faint">Tools</div>
-            {% for t in nav_tools %}
-            <a href="{{ t.path }}" class="flex items-center justify-between gap-3 rounded-md px-3 py-2.5 text-[14px] transition hover:bg-card">
-              <span>{{ t.short_name }}</span>
-              {% if t.status == 'live' %}<span class="rounded bg-accent-tint px-1.5 py-0.5 text-[11px] font-medium text-accent">Live</span>{% else %}<span class="text-[11px] text-faint">Planned</span>{% endif %}
-            </a>
-            {% endfor %}
+          <div class="dd-panel absolute right-0 top-full z-40 mt-2 max-h-[calc(100vh-5rem)] w-72 max-w-[calc(100vw-2rem)] overflow-y-auto rounded-lg border border-line bg-paper p-1 shadow-[0_8px_24px_rgba(30,28,26,.08)]">
+            <div class="flex items-center gap-2 px-3 pb-1 pt-2 label text-faint">{{ tool_icon('research-menu', "h-3.5 w-3.5") }}Research</div>
+            {% for item in nav_research %}{{ menu_item(item, here) }}{% endfor %}
             <div class="my-1 border-t border-line"></div>
-            <a href="/admin/scripts/dashboard" class="block rounded-md px-3 py-2.5 text-[14px] transition hover:bg-card">Admin</a>
+            <div class="flex items-center gap-2 px-3 pb-1 pt-2 label text-faint">{{ tool_icon('tools-menu', "h-3.5 w-3.5") }}Tools</div>
+            {% for item in nav_tools %}{{ menu_item(item, here) }}{% endfor %}
+            <div class="my-1 border-t border-line"></div>
+            <a href="/admin/scripts/dashboard" class="flex items-center gap-3 rounded-md px-3 py-2.5 text-[14px] transition hover:bg-card">
+              <span class="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-md bg-card text-ink">{{ tool_icon('admin', "h-[18px] w-[18px]") }}</span>Admin</a>
           </div>
         </div>
       </div>

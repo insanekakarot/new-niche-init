@@ -85,24 +85,45 @@ def test_pages_have_a_menu_for_narrow_windows():
 
     from app.main import app
     page = TestClient(app).get("/").text
-    assert 'aria-label="Menu"' in page and "lg:hidden" in page
+    assert 'aria-label="Menu"' in page and "md:hidden" in page
 
 
-def test_the_bar_links_every_tool_and_admin_once():
+def test_the_bar_has_research_then_tools_menus_and_admin_beside_scripting():
     import re
 
     from fastapi.testclient import TestClient
 
     from app.main import app
-    from app.web.catalog import TOOLS
+    from app.web.catalog import RESEARCH, TOOLS
     page = TestClient(app).get("/translations").text
-    bar = page.split('aria-label="Tools"')[1].split("</nav>")[0]
-    assert re.findall(r'href="(/[a-z]+)"', bar) == [t.path for t in TOOLS]
-    assert bar.count('href="/admin/scripts/dashboard"') == 1
-    assert 'aria-current="page"' in bar.split('href="/translations"')[1].split("</a>")[0]
-    assert "data-dd-toggle" not in bar                        # no Tools dropdown any more
+    bar = page.split('aria-label="Main"')[1].split("</nav>")[0]
+    research, tools = bar.split('data-menu="research"')[1].split('data-menu="tools"')
+    assert bar.index('data-menu="research"') < bar.index('data-menu="tools"')   # Research first
+    assert re.findall(r'href="(/[a-z/]+)"', research) == [p.path for p in RESEARCH]
+    assert re.findall(r'href="(/[a-z/]+)"', tools) == [t.path for t in TOOLS]
+    assert ["Dashboard", "Research", "Analytics"] == [p.name for p in RESEARCH]
+    assert bar.count("<svg") >= 2 + len(RESEARCH) + len(TOOLS)   # icons beside the words
+    assert 'aria-current="page"' in tools.split('href="/translations"')[1].split("</a>")[0]
     header = page.split("<header")[1].split("</header>")[0]
-    assert header.count(">Admin</a>") == 2                     # the bar + the narrow-window menu
+    buttons = header.split("</nav>")[1]
+    assert buttons.index(">Admin</a>") < buttons.index('href="/scripting"')  # beside Open Scripting
+    assert header.count('href="/admin/scripts/dashboard"') == 2              # + narrow-window menu
+
+
+def test_research_pages():
+    from fastapi.testclient import TestClient
+
+    from app.main import app
+    from app.web.catalog import RESEARCH
+    client = TestClient(app)
+    assert [p.path for p in RESEARCH] == ["/research/dashboard", "/research", "/research/analytics"]
+    for p in RESEARCH:
+        r = client.get(p.path)
+        assert r.status_code == 200 and f"Research / {p.name}" in r.text
+        tabs = r.text.split('aria-label="Research pages"')[1].split("</nav>")[0]
+        assert 'aria-current="page"' in tabs.split(f'href="{p.path}"')[1].split("</a>")[0]
+    assert client.get("/research/nope").status_code == 404
+    assert client.get("/research/research").status_code == 404
 
 
 def test_display_env_fills_in_wslg_when_the_shell_has_none(monkeypatch, tmp_path):

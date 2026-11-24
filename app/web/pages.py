@@ -9,7 +9,8 @@ from app.web import catalog
 from app.web.scripting import load_brand_views
 
 templates = Jinja2Templates(directory=Path(__file__).resolve().parent.parent / "templates")
-# The top bar's Tools menu is on every page.
+# The top bar's Research and Tools menus are on every page.
+templates.env.globals["nav_research"] = catalog.RESEARCH
 templates.env.globals["nav_tools"] = catalog.TOOLS
 
 router = APIRouter(include_in_schema=False)
@@ -51,6 +52,29 @@ def scripting(request: Request):
             "providers": provider_info(),
         },
     )
+
+
+def _research(request: Request, slug: str):
+    page = catalog.RESEARCH_BY_SLUG.get(slug)
+    if page is None:
+        raise HTTPException(status_code=404, detail="Research page not found")
+    return templates.TemplateResponse(
+        request, "research.html",
+        {"page": page, "pages": catalog.RESEARCH,
+         "page_number": catalog.RESEARCH.index(page) + 1, "brands": catalog.brands()},
+    )
+
+
+@router.get("/research", response_class=HTMLResponse)
+def research(request: Request):
+    return _research(request, "research")
+
+
+@router.get("/research/{slug}", response_class=HTMLResponse)
+def research_page(request: Request, slug: str):
+    if slug == "research":  # /research is its page
+        raise HTTPException(status_code=404, detail="Research page not found")
+    return _research(request, slug)
 
 
 @router.get("/{slug}", response_class=HTMLResponse)

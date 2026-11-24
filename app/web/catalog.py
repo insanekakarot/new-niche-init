@@ -75,6 +75,37 @@ TOOLS: tuple[Tool, ...] = (
 TOOLS_BY_SLUG: dict[str, Tool] = {t.slug: t for t in TOOLS}
 
 
+@dataclass(frozen=True)
+class ResearchPage:
+    """A page of the Research section (top bar: Research menu, before Tools)."""
+    slug: str
+    name: str
+    description: str
+    status: str = "planned"
+
+    @property
+    def path(self) -> str:
+        return "/research" if self.slug == "research" else f"/research/{self.slug}"
+
+    @property
+    def short_name(self) -> str:
+        return self.name
+
+
+# New-niche research. How it researches is decided later; for now these are placeholders.
+RESEARCH: tuple[ResearchPage, ...] = (
+    ResearchPage("dashboard", "Dashboard",
+                 "Every niche under research at a glance: where each one stands and what's next."),
+    ResearchPage("research", "Research",
+                 "Research a new niche: collect what's known about it and decide if it's worth "
+                 "a brand."),
+    ResearchPage("analytics", "Analytics",
+                 "Compare researched niches by the numbers to pick the next one."),
+)
+
+RESEARCH_BY_SLUG: dict[str, ResearchPage] = {p.slug: p for p in RESEARCH}
+
+
 def _strings(value) -> tuple[str, ...]:
     if isinstance(value, str):
         value = [value]
