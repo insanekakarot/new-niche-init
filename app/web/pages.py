@@ -5,6 +5,7 @@ from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 
 from app.cli import provider_info
+from app.config import settings
 from app.web import catalog
 from app.web.scripting import load_brand_views
 
@@ -61,6 +62,7 @@ def _research(request: Request, slug: str):
     return templates.TemplateResponse(
         request, "research.html",
         {"page": page, "pages": catalog.RESEARCH,
+         "show_browser": not settings.research_headless,
          "page_number": catalog.RESEARCH.index(page) + 1, "brands": catalog.brands()},
     )
 

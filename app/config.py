@@ -25,9 +25,10 @@ class Settings(BaseSettings):
     brands_file: Path | None = None
 
     # New-niche research (app/research): how many runs may have a browser open at once
-    # (more wait their turn), and whether the browsers stay hidden.
+    # (more wait their turn), and whether the browsers stay hidden by default (the Research
+    # page can switch it per start). For now they show.
     research_max_browsers: int = 4
-    research_headless: bool = True
+    research_headless: bool = False
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

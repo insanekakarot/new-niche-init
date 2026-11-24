@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import time
 from collections.abc import Awaitable, Callable
 
@@ -68,11 +69,24 @@ async def _emit(on_event: Event | None, event: dict) -> None:
             await r
 
 
+def _launch_options(headless: bool, slot: int) -> dict:
+    """Chromium launch options. A shown browser gets its own window, set off from the other
+    runs' windows (slot 0, 1, 2...), and WSLg's display if the server's shell has none."""
+    if headless:
+        return {"headless": True, "args": _LAUNCH_ARGS}
+    from app.desktop import display_env  # no pywebview needed: plain functions
+
+    x, y = 30 + (slot % 6) * 70, 30 + (slot % 6) * 50
+    return {"headless": False, "env": {**os.environ, **display_env()},
+            "args": [*_LAUNCH_ARGS, f"--window-position={x},{y}", "--window-size=1280,900"]}
+
+
 async def explore(url: str, *, videos: int = 5, watch_s: int = 30, headless: bool = True,
-                  on_event: Event | None = None,
+                  slot: int = 0, on_event: Event | None = None,
                   stopped: Callable[[], bool] = lambda: False) -> list[dict]:
     """Open `videos` videos starting at `url`, watching each for `watch_s` seconds.
 
+    headless=False shows the browser window (slot sets it off from other runs' windows).
     on_event gets {"type": "opening" | "watching" | "video" | "skipped", ...} as it goes.
     Returns the details of every opened video (app/research/youtube.details + visit info).
     """
@@ -90,13 +104,16 @@ async def explore(url: str, *, videos: int = 5, watch_s: int = 30, headless: boo
     next_id, came_from = start, None
     async with async_playwright() as pw:
         try:
-            browser = await pw.chromium.launch(headless=headless, args=_LAUNCH_ARGS)
+            browser = await pw.chromium.launch(**_launch_options(headless, slot))
         except Exception as exc:  # noqa: BLE001 - missing browser / system libraries
             raise ExploreError(f"The browser couldn't start: {str(exc).splitlines()[0]} "
                                "(run: python -m playwright install chromium)") from exc
         try:
-            context = await browser.new_context(locale="en-US",
-                                                viewport={"width": 1280, "height": 900})
+            # A shown window: the page follows the window's size; hidden: a fixed size.
+            context = await browser.new_context(
+                locale="en-US",
+                **({"viewport": {"width": 1280, "height": 900}} if headless
+                   else {"no_viewport": True}))
             page = await context.new_page()
             while next_id and len(results) < videos and not stopped():
                 opened.add(next_id)

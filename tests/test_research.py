@@ -129,8 +129,9 @@ def fake_browser(monkeypatch):
     browsers were open at the same time."""
     state = {"open": 0, "most": 0, "urls": []}
 
-    async def explore(url, *, videos, watch_s, headless, on_event, stopped):
+    async def explore(url, *, videos, watch_s, headless, slot, on_event, stopped):
         state["open"] += 1
+        state.setdefault("calls", []).append({"url": url, "headless": headless, "slot": slot})
         state["most"] = max(state["most"], state["open"])
         state["urls"].append(url)
         try:
@@ -240,3 +241,47 @@ def test_research_page_has_the_tool_and_others_stay_planned():
     assert 'id="rs-form"' in page and 'id="rs-add"' in page and "/api/research/runs" in page
     other = client.get("/research/dashboard").text
     assert 'id="rs-form"' not in other and "Not built yet" in other
+
+
+def test_show_the_browsers_per_start_or_from_the_setting(fake_browser, monkeypatch):
+    monkeypatch.setattr(settings, "research_max_browsers", 4)
+    link = "https://youtu.be/AAAAAAAAAA1"
+    with TestClient(app) as client:
+        ids = []
+        for show in (True, False):
+            ids += [r["id"] for r in client.post("/api/research/runs", json={
+                "urls": [link], "videos": 1, "watch_s": 1, "show_browser": show}).json()["runs"]]
+        for headless_setting in (False, True):   # no switch sent: the setting decides
+            monkeypatch.setattr(settings, "research_headless", headless_setting)
+            ids += [r["id"] for r in client.post("/api/research/runs", json={
+                "urls": [link], "videos": 1, "watch_s": 1}).json()["runs"]]
+        done = _wait(client, ids)
+    assert [r["show_browser"] for r in done] == [True, False, True, False]
+    assert sorted(c["headless"] for c in fake_browser["calls"]) == [False, False, True, True]
+
+
+def test_shown_browsers_get_their_own_window_place_and_the_wslg_display(monkeypatch):
+    from app import desktop
+    from app.research import explorer
+    monkeypatch.setattr(desktop, "display_env", lambda env=None: {"DISPLAY": ":0"})
+    hidden = explorer._launch_options(True, 0)
+    assert hidden["headless"] is True and "env" not in hidden
+    first, second = explorer._launch_options(False, 0), explorer._launch_options(False, 1)
+    assert first["headless"] is False and first["env"]["DISPLAY"] == ":0"
+    assert "--window-position=30,30" in first["args"] and "--window-position=100,80" in second["args"]
+    assert "--mute-audio" in first["args"]
+
+
+def test_window_places_are_reused(monkeypatch):
+    monkeypatch.setattr(runs, "_slots", set())
+    assert [runs._take_slot() for _ in range(3)] == [0, 1, 2]
+    runs._slots.discard(1)
+    assert runs._take_slot() == 1 and runs._take_slot() == 3
+
+
+def test_the_page_switch_follows_the_setting(monkeypatch):
+    client = TestClient(app)
+    monkeypatch.setattr(settings, "research_headless", False)
+    assert 'id="rs-show" type="checkbox" class="peer sr-only" checked' in client.get("/research").text
+    monkeypatch.setattr(settings, "research_headless", True)
+    assert 'id="rs-show" type="checkbox" class="peer sr-only">' in client.get("/research").text

@@ -22,6 +22,7 @@ from app.web import outputs
 _runs: dict[str, dict] = {}
 _tasks: dict[str, asyncio.Task] = {}
 _stop: set[str] = set()
+_slots: set[int] = set()   # window positions in use by shown browsers
 _gate: asyncio.Semaphore | None = None
 _gate_key: tuple[int, int] | None = None
 
@@ -53,22 +54,25 @@ def _save(run: dict) -> None:
 def summary(run: dict) -> dict:
     """A run without its videos' long fields: for the list of runs."""
     first = run["videos"][0] if run["videos"] else None
-    return {k: run[k] for k in ("id", "url", "status", "videos_wanted", "watch_s", "created_at",
-                                "finished_at", "error", "progress")} | {
+    return {k: run.get(k) for k in ("id", "url", "status", "videos_wanted", "watch_s",
+                                    "show_browser", "created_at", "finished_at", "error",
+                                    "progress")} | {
         "videos_done": len(run["videos"]),
         "start_title": first["title"] if first else "",
         "start_thumbnail": first["thumbnail"] if first else "",
     }
 
 
-def start(url: str, videos: int, watch_s: int) -> dict:
-    """Create a run and start it in the background (needs a running event loop)."""
+def start(url: str, videos: int, watch_s: int, show_browser: bool | None = None) -> dict:
+    """Create a run and start it in the background (needs a running event loop).
+    show_browser: None = the RESEARCH_HEADLESS setting."""
     stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     run = {
         "id": f"{stamp}-{secrets.token_hex(3)}",
         "url": url.strip(),
         "videos_wanted": videos,
         "watch_s": watch_s,
+        "show_browser": (not settings.research_headless) if show_browser is None else show_browser,
         "status": "queued",           # queued | running | done | stopped | failed
         "created_at": time.time(),
         "started_at": None,
@@ -82,6 +86,13 @@ def start(url: str, videos: int, watch_s: int) -> dict:
     _save(run)
     _tasks[run["id"]] = asyncio.get_running_loop().create_task(_run(run))
     return run
+
+
+def _take_slot() -> int:
+    """The lowest free window position, so shown browsers don't open on top of each other."""
+    slot = next(i for i in range(len(_slots) + 1) if i not in _slots)
+    _slots.add(slot)
+    return slot
 
 
 async def _run(run: dict) -> None:
@@ -109,9 +120,13 @@ async def _run(run: dict) -> None:
             run["status"], run["started_at"] = "running", time.time()
             run["progress"]["note"] = "Starting the browser"
             _save(run)
-            await explore(run["url"], videos=run["videos_wanted"], watch_s=run["watch_s"],
-                          headless=settings.research_headless, on_event=on_event,
-                          stopped=lambda: rid in _stop)
+            slot = _take_slot()
+            try:
+                await explore(run["url"], videos=run["videos_wanted"], watch_s=run["watch_s"],
+                              headless=not run["show_browser"], slot=slot, on_event=on_event,
+                              stopped=lambda: rid in _stop)
+            finally:
+                _slots.discard(slot)
             run["status"] = "stopped" if rid in _stop else "done"
     except asyncio.CancelledError:
         run["status"] = "stopped"

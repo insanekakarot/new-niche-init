@@ -54,6 +54,9 @@
     $('rs-estimate').textContent = `${n} link${n > 1 ? 's' : ''} at the same time · about ${mins} min each.`;
     $('rs-run-label').textContent = n > 1 ? `Run research on ${n} links` : 'Run research';
   }
+  // Show the browsers: remembered on this computer; the server's setting until changed here.
+  try { const saved = localStorage.getItem('rs-show'); if (saved !== null) $('rs-show').checked = saved === '1'; } catch { /* no storage */ }
+  $('rs-show').addEventListener('change', () => { try { localStorage.setItem('rs-show', $('rs-show').checked ? '1' : '0'); } catch { /* no storage */ } });
   $('rs-add').addEventListener('click', () => addRow('', true));
   $('rs-videos').addEventListener('input', estimate);
   $('rs-watch').addEventListener('input', estimate);
@@ -72,7 +75,7 @@
     try {
       const r = await fetch('/api/research/runs', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ urls, videos: +$('rs-videos').value || 5, watch_s: +$('rs-watch').value || 30 }),
+        body: JSON.stringify({ urls, videos: +$('rs-videos').value || 5, watch_s: +$('rs-watch').value || 30, show_browser: $('rs-show').checked }),
       });
       const data = await r.json();
       if (!r.ok) throw new Error(typeof data.detail === 'string' ? data.detail : 'Check the links and the numbers.');
@@ -169,7 +172,7 @@
           <div class="min-w-0 flex-1">
             <div class="flex flex-wrap items-center gap-2">
               <span class="rounded px-1.5 py-0.5 text-[11px] font-medium ${cls}">${label}</span>
-              <span class="text-[12px] text-faint">${when(run.created_at)} · ${done}/${run.videos_wanted} videos · ${run.watch_s} s each</span>
+              <span class="text-[12px] text-faint">${when(run.created_at)} · ${done}/${run.videos_wanted} videos · ${run.watch_s} s each${run.show_browser ? ' · browser shown' : ''}</span>
             </div>
             <h3 class="mt-1.5 truncate font-serif text-[20px] font-medium" title="${esc(title)}">${esc(title)}</h3>
             <a href="${esc(run.url)}" target="_blank" rel="noopener" class="block truncate font-mono text-[12px] text-faint hover:text-accent">${esc(run.url)}</a>

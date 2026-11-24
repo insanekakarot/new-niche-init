@@ -68,7 +68,9 @@ python -m playwright install chromium
 ```
 
 Each link runs in its own browser, at the same time as the others; `RESEARCH_MAX_BROWSERS`
-(default 4) caps how many are open at once, and the rest wait their turn. Runs are saved to
+(default 4) caps how many are open at once, and the rest wait their turn. The page's **Show the
+browsers** switch opens a window per link (on WSL through WSLg); `RESEARCH_HEADLESS=true` makes
+hidden the default. Runs are saved to
 `app/output/_research/` (not in git).
 
 ## Run
