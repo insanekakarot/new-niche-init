@@ -12,6 +12,7 @@
   const when = (ts) => ts ? new Date(ts * 1000).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
   const isYouTube = (s) => /(youtube\.com\/(watch\?.*v=|shorts\/|live\/|embed\/)|youtu\.be\/)[\w-]{11}/.test(s);
   const ICON = `{{ tool_icon('research', 'h-5 w-5') | replace('\n', ' ') }}`;
+  const DEL_ICON = `{{ tool_icon('delete', 'h-4 w-4') | replace('\n', ' ') }}`;
 
   // ------------------------------------------------------------ the link boxes
   const list = $('rs-links'), rowTpl = $('rs-link-row');
@@ -186,6 +187,7 @@
           </div>
           <div class="flex flex-shrink-0 items-center gap-2">
             ${live(run) ? `<button type="button" class="btn btn-secondary" data-stop="${esc(run.id)}">Stop</button>` : ''}
+            ${!live(run) ? `<button type="button" class="btn btn-secondary hover:border-accent-soft hover:text-accent" data-delete="${esc(run.id)}" title="Delete this run and its results">${DEL_ICON}Delete</button>` : ''}
             ${done ? `<a class="btn btn-secondary" href="/api/research/runs/${encodeURIComponent(run.id)}/download" title="Download every detail as JSON">JSON</a>` : ''}
             ${done ? `<button type="button" class="btn ${isOpen ? 'btn-secondary' : 'btn-primary'}" data-toggle="${esc(run.id)}">${isOpen ? 'Hide results' : 'Show results'}</button>` : ''}
           </div>
@@ -329,7 +331,45 @@
   }
 
   // ------------------------------------------------------------ buttons in the runs
+  // ------------------------------------------------------------ delete (type DELETE)
+  const dlg = $('rs-delete'), word = $('rs-delete-word'), okBtn = $('rs-delete-ok');
+  let deleting = null;
+  const deleteError = (msg) => { $('rs-delete-error').textContent = msg || ''; $('rs-delete-error').classList.toggle('hidden', !msg); };
+  function askDelete(id) {
+    const run = runs.get(id);
+    if (!run) return;
+    deleting = id;
+    const n = run.videos ? run.videos.length : run.videos_done || 0;
+    $('rs-delete-title').textContent = (run.videos?.[0]?.title || run.start_title || run.url);
+    $('rs-delete-count').textContent = `${n} video${n === 1 ? '' : 's'} and every detail`;
+    word.value = ''; okBtn.disabled = true; deleteError('');
+    dlg.showModal();
+    word.focus();
+  }
+  word.addEventListener('input', () => { okBtn.disabled = word.value.trim() !== 'DELETE'; deleteError(''); });
+  $('rs-delete-cancel').addEventListener('click', () => dlg.close());
+  dlg.addEventListener('click', (e) => { if (e.target === dlg) dlg.close(); });   // the dimmed area
+  dlg.addEventListener('close', () => { deleting = null; });
+  $('rs-delete-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (word.value.trim() !== 'DELETE' || !deleting) return;
+    const id = deleting;
+    okBtn.disabled = true;
+    try {
+      const r = await fetch(`/api/research/runs/${encodeURIComponent(id)}/delete`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ confirm: 'DELETE' }),
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok && r.status !== 404) throw new Error(typeof data.detail === 'string' ? data.detail : 'Not deleted.');
+      runs.delete(id); opened.delete(id);
+      dlg.close();
+      render();
+    } catch (err) { deleteError(err.message); okBtn.disabled = false; }
+  });
+
   $('rs-runs').addEventListener('click', async (e) => {
+    const del = e.target.closest('[data-delete]');
+    if (del) { askDelete(del.dataset.delete); return; }
     const toggle = e.target.closest('[data-toggle]');
     const stop = e.target.closest('[data-stop]');
     if (toggle) {

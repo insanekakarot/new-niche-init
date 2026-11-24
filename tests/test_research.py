@@ -584,3 +584,69 @@ def test_research_ai_uses_its_own_instructions_and_never_a_scripting_slot(monkey
     assert system == ai.RESEARCH_SYSTEM                    # never the brands file's writer prompt
     assert argv[argv.index("--tools") + 1] == "" and "--allowedTools" not in argv
     assert argv[argv.index("--effort") + 1] == "low"
+
+
+# ---------------------------------------------------------------- delete a run (type DELETE)
+
+def test_delete_needs_the_word_and_removes_the_results(fake_browser, monkeypatch):
+    monkeypatch.setattr(settings, "research_max_browsers", 4)
+    with TestClient(app) as client:
+        rid = client.post("/api/research/runs", json={
+            "urls": ["https://youtu.be/AAAAAAAAAA1"], "videos": 1, "watch_s": 1}).json()["runs"][0]["id"]
+        _wait(client, [rid])
+        saved = runs.folder() / f"{rid}.json"
+        assert saved.is_file()
+        for word in ("", "delete", "Delete", "DELETE NOW", "yes"):
+            r = client.post(f"/api/research/runs/{rid}/delete", json={"confirm": word})
+            assert r.status_code == 422 and r.json()["detail"] == "Type DELETE to confirm."
+        assert client.post(f"/api/research/runs/{rid}/delete", json={}).status_code == 422
+        assert saved.is_file() and client.get(f"/api/research/runs/{rid}").status_code == 200
+        r = client.post(f"/api/research/runs/{rid}/delete", json={"confirm": "DELETE"})
+        assert r.status_code == 200 and r.json() == {"deleted": rid}
+        assert not saved.exists()
+        assert client.get(f"/api/research/runs/{rid}").status_code == 404
+        assert rid not in {x["id"] for x in client.get("/api/research/runs").json()["runs"]}
+        again = client.post(f"/api/research/runs/{rid}/delete", json={"confirm": "DELETE"})
+        assert again.status_code == 404
+
+
+def test_a_saved_run_from_an_earlier_session_can_be_deleted_and_paths_are_refused(fake_browser):
+    runs.folder().mkdir(parents=True, exist_ok=True)
+    old = runs.folder() / "20260101-000000-abcdef.json"
+    old.write_text(json.dumps({"id": "20260101-000000-abcdef", "url": "u", "status": "done",
+                               "videos_wanted": 1, "watch_s": 1, "created_at": 1.0,
+                               "videos": []}), encoding="utf-8")
+    outside = runs.folder().parent / "keep.json"
+    outside.write_text("{}", encoding="utf-8")
+    client = TestClient(app)
+    for bad in ("..%2Fkeep", "..", "a.b", "x" * 80):
+        assert client.post(f"/api/research/runs/{bad}/delete",
+                           json={"confirm": "DELETE"}).status_code in (404, 405)
+    assert outside.is_file()
+    assert client.post("/api/research/runs/20260101-000000-abcdef/delete",
+                       json={"confirm": "DELETE"}).status_code == 200
+    assert not old.exists() and outside.is_file()
+
+
+def test_a_run_that_is_still_going_must_be_stopped_first(fake_browser, monkeypatch):
+    monkeypatch.setattr(settings, "research_max_browsers", 4)
+    with TestClient(app) as client:
+        rid = client.post("/api/research/runs", json={
+            "urls": ["https://youtu.be/AAAAAAAAAA1"], "videos": 50, "watch_s": 1}).json()["runs"][0]["id"]
+        r = client.post(f"/api/research/runs/{rid}/delete", json={"confirm": "DELETE"})
+        assert r.status_code == 409 and "Stop it first" in r.json()["detail"]
+        client.post(f"/api/research/runs/{rid}/stop")
+        _wait(client, [rid])
+        assert client.post(f"/api/research/runs/{rid}/delete",
+                           json={"confirm": "DELETE"}).status_code == 200
+
+
+def test_pages_have_the_delete_popup_and_the_effort_dropdown():
+    client = TestClient(app)
+    page = client.get("/research").text
+    assert '<dialog id="rs-delete"' in page and 'id="rs-delete-word"' in page
+    assert 'id="rs-delete-ok" disabled' in page and "Type <b" in page and ">DELETE</b>" in page
+    assert "data-delete=" in page and "Delete</button>" in page          # icon + word
+    st = client.get("/research/settings").text
+    assert 'id="effort-panel" role="listbox"' in st and '<input type="hidden" id="effort">' in st
+    assert "<select" not in st

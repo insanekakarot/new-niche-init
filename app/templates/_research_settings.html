@@ -93,10 +93,20 @@
             <span class="{{ hint }}">Model</span>
             <input id="model" type="text" maxlength="100" value="{{ opts.model }}" placeholder="" class="mt-1 w-full bg-transparent text-[16px] font-medium outline-none placeholder:text-faint">
           </label>
-          <label class="{{ box }}">
-            <span class="{{ hint }}">Effort</span>
-            <select id="effort" class="mt-1 w-full bg-transparent text-[16px] font-medium outline-none"></select>
-          </label>
+          {# Effort: the same dropdown as the Scripting page's pickers. #}
+          <div class="{{ box }}">
+            <span class="{{ hint }}" id="effort-name">Effort</span>
+            <input type="hidden" id="effort">
+            <div class="dd relative mt-1" data-dd>
+              <button type="button" data-dd-toggle aria-expanded="false" aria-haspopup="listbox" aria-labelledby="effort-name effort-label"
+                      class="-mx-1 flex w-[calc(100%+.5rem)] items-center justify-between gap-2 rounded-md px-1 text-left text-[16px] font-medium text-ink outline-none transition focus-visible:ring-2 focus-visible:ring-accent/20">
+                <span id="effort-label" class="truncate"></span>
+                <svg class="dd-chevron h-4 w-4 flex-shrink-0 text-accent" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.06l3.71-3.83a.75.75 0 111.08 1.04l-4.25 4.39a.75.75 0 01-1.08 0L5.21 8.27a.75.75 0 01.02-1.06z" clip-rule="evenodd"/></svg>
+              </button>
+              <div id="effort-panel" role="listbox" aria-labelledby="effort-name"
+                   class="dd-panel absolute left-[-0.75rem] top-full z-30 mt-3 w-[19rem] max-w-[calc(100vw-2rem)] rounded-lg border border-line bg-paper p-1.5 shadow-[0_8px_24px_rgba(30,28,26,.08)]"></div>
+            </div>
+          </div>
           {{ number("ai_candidates", "Related videos per check", opts.ai_candidates, 3, 40, "Words + AI") }}
         </div>
         <p class="mt-2 text-[12px] text-faint">Empty model: the one in .env (<span id="st-env-model"></span>). Research calls use their own instructions and never take a Scripting run's slot.</p>
@@ -127,11 +137,50 @@
   const saved = {{ opts | tojson }};
   const pick = (name) => form.querySelector(`input[name="${name}"]:checked`)?.value;
 
+  // ---- Effort dropdown (Scripting page style): name, what it means, how deep (dots), ✓
+  const EFFORT = {
+    low: ['Low', 'Fastest. Enough for most niche checks', 1],
+    medium: ['Medium', 'Balanced speed and care', 2],
+    high: ['High', 'More careful, slower', 3],
+    xhigh: ['Extra high', 'Very careful, slow', 4],
+    max: ['Max', 'The most careful, the slowest', 5],
+    ultra: ['Ultra', 'Codex only: the deepest it goes', 5],
+  };
+  const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const dots = (n) => `<span class="flex gap-0.5" aria-hidden="true">${[1, 2, 3, 4, 5].map((i) => `<span class="h-1.5 w-1.5 rounded-full ${i <= n ? 'bg-accent' : 'bg-line'}"></span>`).join('')}</span>`;
+  const check = '<svg class="h-4 w-4 flex-shrink-0 text-accent" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M16.7 5.3a1 1 0 010 1.4l-8 8a1 1 0 01-1.4 0l-4-4a1 1 0 111.4-1.4L8 12.58l7.3-7.3a1 1 0 011.4 0z" clip-rule="evenodd"/></svg>';
+  function effortLabel(value, p) {
+    return value ? EFFORT[value]?.[0] || value : `From .env · ${EFFORT[p.effort]?.[0] || p.effort}`;
+  }
+  function setEffort(value, p, quiet) {
+    $('effort').value = value;
+    $('effort-label').textContent = effortLabel(value, p);
+    $('effort-panel').querySelectorAll('[data-effort]').forEach((b) => {
+      const on = b.dataset.effort === value;
+      b.setAttribute('aria-selected', on);
+      b.classList.toggle('bg-accent-tint', on);
+      b.querySelector('[data-check]').innerHTML = on ? check : '';
+    });
+    if (!quiet) $('effort').dispatchEvent(new Event('change', { bubbles: true }));
+  }
   function efforts(keep) {
     const p = providers.find((x) => x.key === pick('provider')) || providers[0];
-    const sel = $('effort');
-    sel.replaceChildren(new Option(`From .env (${p.effort})`, ''), ...p.efforts.map((e) => new Option(e, e)));
-    sel.value = p.efforts.includes(keep) ? keep : '';
+    const row = (value, name, about, depth) => `
+      <button type="button" role="option" data-effort="${esc(value)}"
+              class="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left transition hover:bg-card">
+        <span class="min-w-0 flex-1">
+          <span class="flex items-center gap-2 text-sm font-medium text-ink">${esc(name)}${depth ? dots(depth) : ''}</span>
+          <span class="block text-xs text-faint">${esc(about)}</span>
+        </span>
+        <span data-check class="w-4"></span>
+      </button>`;
+    $('effort-panel').innerHTML =
+      row('', 'From .env', `${p.label} uses ${EFFORT[p.effort]?.[0] || p.effort} there`, 0)
+      + '<div class="my-1 border-t border-line"></div>'
+      + p.efforts.map((e) => row(e, ...(EFFORT[e] || [e, '', 0]))).join('');
+    $('effort-panel').querySelectorAll('[data-effort]').forEach((b) =>
+      b.addEventListener('click', () => setEffort(b.dataset.effort, p)));
+    setEffort(p.efforts.includes(keep) ? keep : '', p, true);
     $('model').placeholder = p.model;
     $('st-env-model').textContent = `${p.label}: ${p.model}`;
   }

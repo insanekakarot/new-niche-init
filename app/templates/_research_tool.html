@@ -68,6 +68,39 @@
   <p id="rs-empty" class="px-6 py-12 text-center text-[14px] text-faint sm:px-10">No runs yet. Add a YouTube link above and run it.</p>
 </section>
 
+{# Delete a run: a popup that needs the word DELETE (the server checks it too). #}
+<style>
+  #rs-delete::backdrop { background: rgba(30, 28, 26, .45); }
+  #rs-delete[open] { animation: rsPop .18s ease both; }
+  @keyframes rsPop { from { opacity: 0; transform: translateY(6px) scale(.98); } to { opacity: 1; transform: none; } }
+</style>
+<dialog id="rs-delete" aria-labelledby="rs-delete-heading"
+        class="w-[min(30rem,calc(100vw-2rem))] rounded-xl border border-line bg-paper p-0 text-ink shadow-[0_24px_64px_rgba(30,28,26,.18)]">
+  <form id="rs-delete-form" class="p-6" autocomplete="off">
+    <div class="flex items-start gap-4">
+      <span class="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full bg-accent-tint text-accent ring-1 ring-accent-soft">{{ tool_icon('delete', "h-5 w-5") }}</span>
+      <div class="min-w-0 flex-1">
+        <h2 id="rs-delete-heading" class="font-serif text-[24px] font-medium leading-tight">Delete this run?</h2>
+        <p id="rs-delete-title" class="mt-1 truncate text-[14px] font-medium text-ink"></p>
+        <p class="mt-2 text-[14px] leading-relaxed text-muted">
+          Its results (<span id="rs-delete-count"></span>) are removed from this computer for good.
+          Download the JSON first to keep them.
+        </p>
+      </div>
+    </div>
+    <label class="mt-5 block">
+      <span class="text-[13px] text-muted">Type <b class="font-mono font-semibold tracking-wider text-accent">DELETE</b> to confirm</span>
+      <input id="rs-delete-word" type="text" spellcheck="false" autocapitalize="characters" placeholder="DELETE"
+             class="mt-1.5 h-11 w-full rounded-lg border border-line bg-paper px-3 font-mono text-[15px] tracking-[.2em] outline-none transition placeholder:tracking-[.2em] placeholder:text-line focus:border-accent focus:ring-2 focus:ring-accent/15">
+    </label>
+    <p id="rs-delete-error" class="mt-2 hidden rounded-md bg-amber-50 px-3 py-2 text-[13px] text-amber-800"></p>
+    <div class="mt-6 flex flex-wrap justify-end gap-2">
+      <button type="button" id="rs-delete-cancel" class="btn btn-secondary">Cancel</button>
+      <button type="submit" id="rs-delete-ok" disabled class="btn btn-primary disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-accent">{{ tool_icon('delete', "h-4 w-4") }}Delete run</button>
+    </div>
+  </form>
+</dialog>
+
 <template id="rs-link-row">
   <li class="flex items-center gap-2">
     <span class="w-6 flex-shrink-0 text-right font-mono text-[12px] text-faint" data-num></span>

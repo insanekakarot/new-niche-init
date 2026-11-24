@@ -183,11 +183,18 @@ def get(rid: str) -> dict | None:
     return with_stats(run) if run else None
 
 
+def _valid_id(rid: str) -> bool:
+    """A run id: '20261124-103456-dd6d83' (letters, digits and dashes only, no paths)."""
+    return bool(rid) and len(rid) <= 64 and rid.replace("-", "").isalnum()
+
+
 def _get(rid: str) -> dict | None:
     if rid in _runs:
         return _runs[rid]
+    if not _valid_id(rid):
+        return None
     path = folder() / f"{rid}.json"
-    if not rid.replace("-", "").isalnum() or not path.is_file():
+    if not path.is_file():
         return None
     try:
         run = json.loads(path.read_text(encoding="utf-8"))
@@ -205,6 +212,22 @@ def recent(limit: int = 30) -> list[dict]:
         ids |= {p.stem for p in folder().glob("*.json")}
     runs = [r for r in (_get(i) for i in sorted(ids, reverse=True)[:limit]) if r]
     return [summary(r) for r in sorted(runs, key=lambda r: r["created_at"], reverse=True)]
+
+
+class RunGoing(RuntimeError):
+    """The run is still going: stop it before deleting it."""
+
+
+def delete(rid: str) -> bool:
+    """Delete a run and its saved results. False: no such run. RunGoing: stop it first."""
+    run = _get(rid)
+    if run is None:
+        return False
+    if rid in _runs and run["status"] in ("queued", "running"):
+        raise RunGoing("This run is still going. Stop it first, then delete it.")
+    _runs.pop(rid, None)
+    (folder() / f"{rid}.json").unlink(missing_ok=True)
+    return True
 
 
 def stop(rid: str) -> bool:

@@ -84,6 +84,23 @@ def stop_run(run_id: str):
     return {"stopping": runs.stop(run_id)}
 
 
+class DeleteRequest(BaseModel):
+    confirm: str = ""      # must be the word DELETE, typed in the page's popup
+
+
+@router.post("/runs/{run_id}/delete")
+def delete_run(run_id: str, req: DeleteRequest):
+    if req.confirm != "DELETE":
+        raise HTTPException(422, "Type DELETE to confirm.")
+    try:
+        deleted = runs.delete(run_id)
+    except runs.RunGoing as exc:
+        raise HTTPException(409, str(exc)) from exc
+    if not deleted:
+        raise HTTPException(404, "Run not found")
+    return {"deleted": run_id}
+
+
 @router.get("/runs/{run_id}/download")
 def download_run(run_id: str):
     run = _run_or_404(run_id)
