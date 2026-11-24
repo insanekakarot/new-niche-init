@@ -43,12 +43,35 @@ def _gate() -> asyncio.Semaphore:
     return _gates[loop]
 
 
+def settings_for(provider: str, model: str = "", effort: str = ""):
+    """The CLI settings for a research call: .env's, with the research instructions, no tools
+    (Claude), at most TIMEOUT_S, and the model / effort from Research › Settings if set."""
+    if provider == "claude":
+        s = claude_client.with_effort(get_claude_settings(), effort or None)
+        extra = {"tools": ""}
+    elif provider == "codex":
+        s = codex_client.with_effort(get_codex_settings(), effort or None)
+        extra = {}
+    else:
+        raise CliError(f"Unknown AI {provider!r}: use claude or codex.")
+    return s.model_copy(update={"system_prompt": RESEARCH_SYSTEM,
+                                "timeout_seconds": min(s.timeout_seconds, TIMEOUT_S),
+                                **extra, **({"model": model} if model else {})})
+
+
+def build_payload(provider: str, prompt: str, *, model: str = "", effort: str = "",
+                  workdir: Path | None = None) -> dict:
+    """Exactly what ask() sends: {provider, argv, stdin, system_prompt, ...}. Codex runs in a
+    fresh temp folder, shown as <temp-dir> when `workdir` isn't given."""
+    s = settings_for(provider, model, effort)
+    if provider == "claude":
+        return claude_client.build_payload(prompt, s)
+    return codex_client.build_payload(prompt, s, workdir=workdir)
+
+
 async def _claude(prompt: str, model: str, effort: str, workdir: Path) -> str:
-    s = claude_client.with_effort(get_claude_settings(), effort or None)
-    s = s.model_copy(update={"system_prompt": RESEARCH_SYSTEM, "tools": "",
-                             "timeout_seconds": min(s.timeout_seconds, TIMEOUT_S),
-                             **({"model": model} if model else {})})
-    payload = claude_client.build_payload(prompt, s)
+    s = settings_for("claude", model, effort)
+    payload = build_payload("claude", prompt, model=model, effort=effort)
     stdout, stderr, code, secs = await run_process(
         payload["argv"], payload["stdin"], cwd=workdir, timeout=s.timeout_seconds,
         label="Claude", setting_prefix="CLAUDE_CLI_")
@@ -56,10 +79,7 @@ async def _claude(prompt: str, model: str, effort: str, workdir: Path) -> str:
 
 
 async def _codex(prompt: str, model: str, effort: str, workdir: Path) -> str:
-    s = codex_client.with_effort(get_codex_settings(), effort or None)
-    s = s.model_copy(update={"system_prompt": RESEARCH_SYSTEM,
-                             "timeout_seconds": min(s.timeout_seconds, TIMEOUT_S),
-                             **({"model": model} if model else {})})
+    s = settings_for("codex", model, effort)
     return (await codex_client._run_in(workdir, prompt, s, None, False)).text
 
 
