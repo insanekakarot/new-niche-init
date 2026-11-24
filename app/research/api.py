@@ -18,8 +18,9 @@ MAX_LINKS = 20
 
 class StartRequest(BaseModel):
     urls: list[str] = Field(..., min_length=1)
-    videos: int = Field(5, ge=1, le=50)       # videos to open per link, the start one included
-    watch_s: int = Field(30, ge=1, le=600)    # seconds to watch each
+    videos: int = Field(10, ge=1, le=50)      # videos to open per link, the start one included
+    watch_s: int = Field(10, ge=1, le=600)    # seconds to watch each
+    max_age_days: int | None = Field(30, ge=1, le=3650)  # open only videos this new; None = any
     show_browser: bool | None = None          # None: the RESEARCH_HEADLESS setting
 
 
@@ -33,7 +34,7 @@ async def start_runs(req: StartRequest):
     bad = [u for u in urls if not video_id(u)]
     if bad:
         raise HTTPException(422, "Not a YouTube video link: " + ", ".join(bad[:3]))
-    started = [runs.start(u, req.videos, req.watch_s, req.show_browser) for u in urls]
+    started = [runs.start(u, req.videos, req.watch_s, req.show_browser, req.max_age_days) for u in urls]
     return {"runs": [runs.summary(r) for r in started]}
 
 

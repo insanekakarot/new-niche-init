@@ -17,6 +17,7 @@ from pathlib import Path
 
 from app.config import settings
 from app.research import explorer
+from app.research.stats import with_stats
 from app.web import outputs
 
 _runs: dict[str, dict] = {}
@@ -55,23 +56,26 @@ def summary(run: dict) -> dict:
     """A run without its videos' long fields: for the list of runs."""
     first = run["videos"][0] if run["videos"] else None
     return {k: run.get(k) for k in ("id", "url", "status", "videos_wanted", "watch_s",
-                                    "show_browser", "created_at", "finished_at", "error",
-                                    "progress")} | {
+                                    "max_age_days", "show_browser", "created_at", "finished_at",
+                                    "error", "ended", "progress")} | {
         "videos_done": len(run["videos"]),
         "start_title": first["title"] if first else "",
         "start_thumbnail": first["thumbnail"] if first else "",
     }
 
 
-def start(url: str, videos: int, watch_s: int, show_browser: bool | None = None) -> dict:
+def start(url: str, videos: int, watch_s: int, show_browser: bool | None = None,
+          max_age_days: int | None = None) -> dict:
     """Create a run and start it in the background (needs a running event loop).
-    show_browser: None = the RESEARCH_HEADLESS setting."""
+    show_browser: None = the RESEARCH_HEADLESS setting. max_age_days: None = any age."""
     stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     run = {
         "id": f"{stamp}-{secrets.token_hex(3)}",
         "url": url.strip(),
         "videos_wanted": videos,
         "watch_s": watch_s,
+        "max_age_days": max_age_days,
+        "ended": None,                # why it stopped before videos_wanted, if it did
         "show_browser": (not settings.research_headless) if show_browser is None else show_browser,
         "status": "queued",           # queued | running | done | stopped | failed
         "created_at": time.time(),
@@ -111,6 +115,8 @@ async def _run(run: dict) -> None:
             _save(run)
         elif e["type"] == "skipped":
             run["skipped"].append({"id": e["id"], "error": e["error"]})
+        elif e["type"] == "end":
+            run["ended"] = e["reason"]
 
     try:
         async with _gate_for_loop():
@@ -123,7 +129,8 @@ async def _run(run: dict) -> None:
             slot = _take_slot()
             try:
                 await explore(run["url"], videos=run["videos_wanted"], watch_s=run["watch_s"],
-                              headless=not run["show_browser"], slot=slot, on_event=on_event,
+                              headless=not run["show_browser"], slot=slot,
+                              max_age_days=run["max_age_days"], on_event=on_event,
                               stopped=lambda: rid in _stop)
             finally:
                 _slots.discard(slot)
@@ -145,6 +152,12 @@ async def _run(run: dict) -> None:
 
 
 def get(rid: str) -> dict | None:
+    """The run with its medians (app/research/stats.py), or None."""
+    run = _get(rid)
+    return with_stats(run) if run else None
+
+
+def _get(rid: str) -> dict | None:
     if rid in _runs:
         return _runs[rid]
     path = folder() / f"{rid}.json"
@@ -164,7 +177,7 @@ def recent(limit: int = 30) -> list[dict]:
     ids = set(_runs)
     if folder().is_dir():
         ids |= {p.stem for p in folder().glob("*.json")}
-    runs = [r for r in (get(i) for i in sorted(ids, reverse=True)[:limit]) if r]
+    runs = [r for r in (_get(i) for i in sorted(ids, reverse=True)[:limit]) if r]
     return [summary(r) for r in sorted(runs, key=lambda r: r["created_at"], reverse=True)]
 
 

@@ -108,7 +108,8 @@ def test_details_reads_every_field():
     first, second = d["related"]
     assert first == {"id": "BBBBBBBBBB2", "url": "https://www.youtube.com/watch?v=BBBBBBBBBB2",
                      "title": "Day 25", "channel": "Other Channel", "views": 1200000,
-                     "views_text": "1.2M views", "age": "3 weeks ago", "length": "10:05"}
+                     "views_text": "1.2M views", "age": "3 weeks ago", "days_ago": 21,
+                     "length": "10:05"}
     assert second["title"] == "Morning" and second["length"] == "1:02:03"
 
 
@@ -129,9 +130,11 @@ def fake_browser(monkeypatch):
     browsers were open at the same time."""
     state = {"open": 0, "most": 0, "urls": []}
 
-    async def explore(url, *, videos, watch_s, headless, slot, on_event, stopped):
+    async def explore(url, *, videos, watch_s, headless, slot, max_age_days, on_event, stopped):
         state["open"] += 1
-        state.setdefault("calls", []).append({"url": url, "headless": headless, "slot": slot})
+        state.setdefault("calls", []).append({"url": url, "headless": headless, "slot": slot,
+                                              "videos": videos, "watch_s": watch_s,
+                                              "max_age_days": max_age_days})
         state["most"] = max(state["most"], state["open"])
         state["urls"].append(url)
         try:
@@ -285,3 +288,75 @@ def test_the_page_switch_follows_the_setting(monkeypatch):
     assert 'id="rs-show" type="checkbox" class="peer sr-only" checked' in client.get("/research").text
     monkeypatch.setattr(settings, "research_headless", True)
     assert 'id="rs-show" type="checkbox" class="peer sr-only">' in client.get("/research").text
+
+
+# ---------------------------------------------------------------- dates, range, medians
+
+@pytest.mark.parametrize("age, days", [
+    ("2d ago", 2), ("2 days ago", 2), ("1 day ago", 1), ("3 weeks ago", 21), ("2w ago", 14),
+    ("11mo ago", 330), ("1 month ago", 30), ("1 year ago", 365), ("2y ago", 730),
+    ("5 hours ago", 0), ("30 minutes ago", 0), ("Streamed 4 days ago", 4), ("", None),
+    ("10M views", None),
+])
+def test_days_ago(age, days):
+    assert yt.days_ago(age) == days
+
+
+def test_days_old_and_views_per_subscriber():
+    from datetime import datetime, timezone
+    now = datetime(2026, 1, 15, 12, tzinfo=timezone.utc)
+    d = yt.details(PLAYER, DATA, now=now)
+    assert d["days_old"] == 9                      # published 2026-01-05 18:00 UTC
+    assert d["views_per_sub"] == 0.08              # 120,345 views / 1.5M subscribers
+    assert [r["days_ago"] for r in d["related"]] == [21, 365]
+    assert yt.days_since("not a date") is None
+
+
+def test_next_video_keeps_to_the_days_set():
+    from app.research.explorer import _next
+    results = [{"related": [{"id": "old", "days_ago": 400}, {"id": "seen", "days_ago": 1},
+                            {"id": "unknown", "days_ago": None}, {"id": "new", "days_ago": 6}]}]
+    assert _next(results, {"seen"}, 30) == "new"
+    assert _next(results, {"seen"}, None) == "old"          # any age: YouTube's order
+    assert _next(results, {"seen", "new"}, 30) is None       # nothing left in the range
+    later = results + [{"related": [{"id": "fresh", "days_ago": 2}]}]
+    assert _next(later, {"seen"}, 30) == "fresh"            # the newest page's list first
+
+
+def test_medians_and_each_video_against_them():
+    from app.research.stats import run_stats, with_stats
+    vids = [{"views": 100, "likes": 10, "like_rate": 10.0, "channel": {"subscribers": 1000}},
+            {"views": 5000, "likes": 50, "like_rate": 1.0, "channel": {"subscribers": 1000}},
+            {"views": 300, "likes": None, "channel": {"subscribers": None}}]
+    m = run_stats(vids)["median"]
+    assert m["views"] == 300 and m["subscribers"] == 1000 and m["likes"] == 30
+    run = with_stats({"id": "x", "videos": vids})
+    assert [v["views_per_sub"] for v in run["videos"]] == [0.1, 5.0, None]
+    assert run["stats"]["median"]["views_per_sub"] == 2.55   # median of 0.1 and 5.0
+    assert [v["vs_median"] for v in run["videos"]] == [0.33, 16.67, 1.0]
+    assert with_stats({"id": "y", "videos": []})["stats"] == {
+        "count": 0, "median": {k: None for k in m}}
+
+
+def test_new_defaults_and_the_days_reach_the_browser(fake_browser, monkeypatch):
+    monkeypatch.setattr(settings, "research_max_browsers", 4)
+    link = "https://youtu.be/AAAAAAAAAA1"
+    with TestClient(app) as client:
+        a = client.post("/api/research/runs", json={"urls": [link]}).json()["runs"][0]
+        b = client.post("/api/research/runs", json={"urls": [link], "videos": 1, "watch_s": 1,
+                                                    "max_age_days": None}).json()["runs"][0]
+        assert (a["videos_wanted"], a["watch_s"], a["max_age_days"]) == (10, 10, 30)
+        assert b["max_age_days"] is None
+        done = {r["id"]: r for r in _wait(client, [a["id"], b["id"]])}
+    calls = {c["videos"]: c for c in fake_browser["calls"]}
+    assert calls[10]["max_age_days"] == 30 and calls[1]["max_age_days"] is None
+    run = done[a["id"]]
+    assert run["stats"]["count"] == 10 and run["stats"]["median"]["views"] == 120345
+    assert run["videos"][0]["vs_median"] == 1.0
+
+
+def test_page_defaults():
+    page = TestClient(app).get("/research").text
+    assert 'id="rs-videos" type="number" min="1" max="50" value="10"' in page
+    assert 'id="rs-watch" type="number" min="1" max="600" value="10"' in page
+    assert 'id="rs-days" type="number" min="1" max="3650" value="30"' in page

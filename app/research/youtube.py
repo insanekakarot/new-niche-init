@@ -10,6 +10,7 @@ a missing one is None / empty, never an error.
 from __future__ import annotations
 
 import re
+from datetime import datetime, timezone
 from urllib.parse import parse_qs, urlparse
 
 _ID = re.compile(r"^[\w-]{11}$")
@@ -118,6 +119,35 @@ def clock(seconds: int | None) -> str:
     return f"{h}:{m:02d}:{s:02d}" if h else f"{m}:{s:02d}"
 
 
+_AGO = re.compile(r"(\d+)\s*(seconds?|secs?|s|minutes?|mins?|hours?|hrs?|h|days?|d|weeks?|wks?|w|"
+                  r"months?|mo|years?|yrs?|y|m)\b(?:\s*ago)?", re.IGNORECASE)
+_DAYS = {"s": 0, "sec": 0, "second": 0, "m": 0, "min": 0, "minute": 0, "h": 0, "hr": 0,
+         "hour": 0, "d": 1, "day": 1, "w": 7, "wk": 7, "week": 7, "mo": 30, "month": 30,
+         "y": 365, "yr": 365, "year": 365}
+
+
+def days_ago(age: str) -> int | None:
+    """'3 weeks ago' -> 21, '2d ago' -> 2, '11mo ago' -> 330, 'Streamed 5 hours ago' -> 0.
+    Months and years are rounded (30 / 365 days). None if there's no age in the text."""
+    m = _AGO.search(age or "")
+    if not m or "ago" not in (age or "").lower():
+        return None
+    unit = m.group(2).lower()
+    unit = unit if unit in _DAYS else unit.rstrip("s")
+    return int(m.group(1)) * _DAYS.get(unit, 0)
+
+
+def days_since(iso: str, now: datetime | None = None) -> int | None:
+    """Whole days from an ISO date ('2026-11-21T09:00:36-08:00') until now."""
+    try:
+        when = datetime.fromisoformat(iso)
+    except (TypeError, ValueError):
+        return None
+    if when.tzinfo is None:
+        when = when.replace(tzinfo=timezone.utc)
+    return max(0, ((now or datetime.now(timezone.utc)) - when).days)
+
+
 def _clean(s: str) -> str:
     # YouTube wraps names in bidi isolation marks: '‎⁨@Name⁩'.
     return re.sub(r"[‎‏⁦-⁩]", "", s or "").strip()
@@ -125,7 +155,7 @@ def _clean(s: str) -> str:
 
 # ---------------------------------------------------------------- the video
 
-def details(player: dict | None, data: dict | None) -> dict:
+def details(player: dict | None, data: dict | None, now: datetime | None = None) -> dict:
     """Clean details of the video on a watch page from its two JSON objects."""
     player, data = player or {}, data or {}
     vd = player.get("videoDetails") or {}
@@ -165,9 +195,13 @@ def details(player: dict | None, data: dict | None) -> dict:
         "likes": likes,
         "comments": comments,
         "like_rate": round(likes / views * 100, 2) if likes and views else None,
+        # Views for each subscriber: above 1 = more views than the channel has subscribers.
+        "views_per_sub": (round(views / subs, 3)
+                          if views is not None and (subs := number(text(owner.get("subscriberCountText")))) else None),
         "comment_rate": round(comments / views * 100, 3) if comments and views else None,
         "published": mf.get("publishDate") or "",
         "uploaded": mf.get("uploadDate") or "",
+        "days_old": days_since(mf.get("publishDate") or mf.get("uploadDate") or "", now),
         "age": text(_get(primary, "relativeDateText")) or text(primary.get("dateText")),
         "length_s": length,
         "length": clock(length),
@@ -271,6 +305,7 @@ def related(data: dict, limit: int = 20) -> list[dict]:
             "views": number(labels[views_i] or texts[views_i]) if views_i is not None else None,
             "views_text": texts[views_i] if views_i is not None else "",
             "age": age,
+            "days_ago": days_ago(age),
             "length": text(badge.get("text")) if badge else "",
         })
     for r in _walk(data, "compactVideoRenderer"):  # the older layout
@@ -284,5 +319,6 @@ def related(data: dict, limit: int = 20) -> list[dict]:
             "views": number(text(r.get("viewCountText"))),
             "views_text": text(r.get("shortViewCountText") or r.get("viewCountText")),
             "age": text(r.get("publishedTimeText")), "length": text(r.get("lengthText")),
+            "days_ago": days_ago(text(r.get("publishedTimeText"))),
         })
     return out[:limit]

@@ -8,6 +8,8 @@ without sharing anything. From the start video it:
      scrolling down meanwhile so the comments load;
   3. reads the page's data (app/research/youtube.py) and the top comments;
   4. opens the first related video it hasn't opened yet, until `videos` have been opened.
+     With max_age_days, only related videos published within that many days are opened
+     (their age is shown beside them: "3 days ago"); the start video is always opened.
 
 Install once:  pip install -e ".[research]"  &&  python -m playwright install chromium
 """
@@ -81,13 +83,14 @@ def _launch_options(headless: bool, slot: int) -> dict:
             "args": [*_LAUNCH_ARGS, f"--window-position={x},{y}", "--window-size=1280,900"]}
 
 
-async def explore(url: str, *, videos: int = 5, watch_s: int = 30, headless: bool = True,
-                  slot: int = 0, on_event: Event | None = None,
+async def explore(url: str, *, videos: int = 10, watch_s: int = 10, headless: bool = True,
+                  slot: int = 0, max_age_days: int | None = None, on_event: Event | None = None,
                   stopped: Callable[[], bool] = lambda: False) -> list[dict]:
     """Open `videos` videos starting at `url`, watching each for `watch_s` seconds.
 
     headless=False shows the browser window (slot sets it off from other runs' windows).
-    on_event gets {"type": "opening" | "watching" | "video" | "skipped", ...} as it goes.
+    max_age_days: open only related videos published within that many days.
+    on_event gets {"type": "opening" | "watching" | "video" | "skipped" | "end", ...}.
     Returns the details of every opened video (app/research/youtube.details + visit info).
     """
     start = yt.video_id(url)
@@ -130,14 +133,33 @@ async def explore(url: str, *, videos: int = 5, watch_s: int = 30, headless: boo
                     video = None
                 if video:
                     video["visit"]["from"] = came_from
+                    video["visit"]["in_range"] = (max_age_days is None or (
+                        video["days_old"] is not None and video["days_old"] <= max_age_days))
                     results.append(video)
                     await _emit(on_event, {"type": "video", "n": n, "video": video})
                     came_from = video["id"]
-                pool = [r["id"] for v in reversed(results) for r in v["related"]]
-                next_id = next((i for i in pool if i not in opened), None)
+                next_id = _next(results, opened, max_age_days)
+                if next_id is None and len(results) < videos and not stopped():
+                    reason = (f"No more related videos from the last {max_age_days} days"
+                              if max_age_days else "No more related videos")
+                    await _emit(on_event, {"type": "end", "reason": reason})
         finally:
             await browser.close()
     return results
+
+
+def _next(results: list[dict], opened: set[str], max_age_days: int | None) -> str | None:
+    """The next video: the first related one not opened yet, newest page's list first. With
+    max_age_days, only those whose age ('3 days ago') is within it (unknown age: skipped)."""
+    for v in reversed(results):
+        for r in v["related"]:
+            if r["id"] in opened:
+                continue
+            if max_age_days is not None and (r.get("days_ago") is None
+                                             or r["days_ago"] > max_age_days):
+                continue
+            return r["id"]
+    return None
 
 
 async def _visit(page, vid: str, n: int, watch_s: int, on_event: Event | None,
